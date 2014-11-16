@@ -1,0 +1,10 @@
+list tests in a directory
+% $Id: //info.ravenbrook.com/project/mps/version/1.114/test/test/script/help/index#1 $
+
+Usage: qa index [<directory>]
+
+'index' lists the tests in the directory specified, or the
+current directory if none is. For each test, the filename
+and test summary are displayed.
+
+

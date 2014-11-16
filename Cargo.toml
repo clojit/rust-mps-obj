@@ -1,0 +1,6 @@
+[package]
+
+name = "rust-mps-obj"
+build = "build.rs"
+version = "0.0.1"
+authors = ["Sebastian Wicki <gandro@gmx.net>"]
