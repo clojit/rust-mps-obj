@@ -22,7 +22,7 @@ fn main() {
     cc.arg("-c").arg("mps-kit-1.114.0/code/mps.c");
     cc.arg("-o").arg(format!("{}/mps.o", out_dir));
     if debug {
-        cc.args(["-g", "-DCONFIG_VAR_COOL"]);
+        cc.args(&["-g", "-DCONFIG_VAR_COOL"]);
     } else {
         cc.arg("-O2");
     }

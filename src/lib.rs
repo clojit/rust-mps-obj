@@ -53,21 +53,66 @@ pub struct Obj<T: Info> {
     addr: *mut ObjStub<T>
 }
 
-#[repr(C)]
-pub struct TagObj(u64);
-
-impl TagObj {
-    fn has_tag(&self) -> bool {
-        true
-    }
-
-    fn as_obj<T>(&self) -> Option<Obj<T>> {
-        None
-    }
+#[repr(packed, C)]
+pub struct NanBox<T> {
+    repr: u64
 }
 
-impl<T:Info> Obj<T> {
+#[inline]
+fn invert_non_negative(repr: u64) -> u64 {
+    let mask: u64 = (!repr as i64 >> 63) as u64 & !(1 << 63);
+    repr ^ mask
+}
 
+const TAG_POINTER_HI: u16 = 0xFFFF;
+const TAG_DOUBLE_MAX: u16 = 0xFFF8;
+const TAG_DOUBLE_MIN: u16 = 0x0007;
+const TAG_POINTER_LO: u16 = 0x0000;
+
+impl<T> NanBox<T> {
+    #[inline]
+    fn tag(self) -> u16 {
+        (self.repr >> 48 & 0xFFFF) as u16
+    }
+
+    #[inline]
+    fn is_double(self) -> bool {
+        self.tag() >= TAG_DOUBLE_MIN && self.tag() <= TAG_DOUBLE_MAX
+    }
+
+    #[inline]
+    fn is_pointer(self) -> bool {
+        self.tag() == TAG_POINTER_LO || self.tag() == TAG_POINTER_HI
+    }
+
+    #[inline]
+    fn unbox_double(self) -> f64 {
+        assert!(self.is_double());
+
+        let bits = invert_non_negative(self.repr);
+        unsafe { mem::transmute(bits) }
+    }
+
+    #[inline]
+    fn box_double(double: f64) -> NanBox<T> {
+        let bits: u64 = unsafe { mem::transmute(double) };
+        let boxed = NanBox { repr: invert_non_negative(bits) };
+        assert!(boxed.is_double());
+        boxed
+    }
+
+    #[inline]
+    fn unbox_pointer(self) -> *mut T {
+        assert!(self.is_pointer());
+        unsafe { mem::transmute(self.repr) }
+    }
+
+    #[inline]
+    fn box_pointer(ptr: *mut T) -> NanBox<T> {
+        let boxed = NanBox { repr: ptr.to_uint() as u64 };
+        assert!(boxed.is_pointer());
+        boxed
+    }
 }
 
 struct Arena {
@@ -146,4 +191,16 @@ fn create_arena() {
     let a = Arena::new(32 * 1024 * 1024);
 
     let p = ObjPool::new(a);
+}
+
+#[test]
+fn test_nanbox() {
+    let f = 0.1234f64;
+    let nb = NanBox::<()>::box_double(f);
+    assert!(nb.unbox_double() == f);
+
+    let mut val: String = "Hi, there".to_string();
+    let nb = NanBox::box_pointer(&mut val);
+    let strptr: &mut String = unsafe { &mut *nb.unbox_pointer() };
+    assert!(strptr == &mut val)
 }
