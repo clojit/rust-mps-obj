@@ -9,37 +9,27 @@
 
 #define ALIGNMENT sizeof(uint64_t)
 
-uint16_t OBJ_FMT_TYPE_PAYLOAD = 0x0001;
-uint16_t OBJ_FMT_TYPE_FORWARD = 0x0002;
-uint16_t OBJ_FMT_TYPE_PADDING = 0x0004;
-
-struct obj_header {
-    uint16_t type;
-    uint16_t _;
-    uint32_t size;
-} __attribute__((packed));
-
-struct obj_forward {
-    uint16_t type;
-    uint16_t _;
-    uint32_t size;
-    mps_addr_t fwd;
-} __attribute__((packed));
+uint8_t OBJ_MPS_TYPE_PADDING = 0x00;
+uint8_t OBJ_MPS_TYPE_FORWARD = 0x01;
+uint8_t OBJ_MPS_TYPE_OBJECT  = 0x02;
+uint8_t OBJ_MPS_TYPE_ARRAY   = 0x03;
 
 struct obj_stub {
-    uint16_t type;
-    uint16_t offset;
-    uint32_t size;
-    uint64_t info_type;
+    uint8_t type;
+    uint8_t _;
+    uint16_t cljtype;
+    uint32_t size; // incl. header
+    mps_addr_t ref[];
 } __attribute__((packed));
 
 static mps_res_t obj_scan(mps_ss_t ss, mps_addr_t base, mps_addr_t limit) {
   MPS_SCAN_BEGIN(ss) {
     while (base < limit) {
         struct obj_stub *obj = base;
-        if (obj->type == OBJ_FMT_TYPE_PAYLOAD) {
-            mps_addr_t ref_base =  (uint8_t*)base + obj->offset;
-            mps_addr_t ref_limit = (uint8_t*)base + obj->size;
+        // FIXME: we currently only scan objects, arrays are not supported yet
+        if (obj->type == OBJ_MPS_TYPE_OBJECT) {
+            mps_addr_t ref_base =  obj->ref;
+            mps_addr_t ref_limit = (uint8_t*)ref_base + obj->size;
             for (mps_addr_t ref = ref_base; ref < ref_limit; ref++) {
                 mps_res_t res = MPS_FIX12(ss, &ref);
                 if (res != MPS_RES_OK) return res;
@@ -53,16 +43,16 @@ static mps_res_t obj_scan(mps_ss_t ss, mps_addr_t base, mps_addr_t limit) {
 
 static mps_addr_t obj_skip(mps_addr_t base)
 {
-    struct obj_header *obj = base;
+    struct obj_stub *obj = base;
     base = (uint8_t*)base + obj->size;
     return base;
 }
 
 static mps_addr_t obj_isfwd(mps_addr_t addr)
 {
-    struct obj_forward *obj = addr;
-    if (obj->type == OBJ_FMT_TYPE_FORWARD) {
-        return obj->fwd;
+    struct obj_stub *obj = addr;
+    if (obj->type == OBJ_MPS_TYPE_FORWARD) {
+        return obj->ref[0];
     }
 
     return NULL;
@@ -70,19 +60,19 @@ static mps_addr_t obj_isfwd(mps_addr_t addr)
 
 static void obj_fwd(mps_addr_t old, mps_addr_t new)
 {
-    struct obj_forward *obj = old;
+    struct obj_stub *obj = old;
     mps_addr_t limit = obj_skip(old);
-    uint32_t size = (uint32_t)((char *)limit - (char *)old);
+    uint32_t size = (uint32_t)((uint8_t*)limit - (uint8_t*)old);
 
-    obj->type = OBJ_FMT_TYPE_FORWARD;
+    obj->type = OBJ_MPS_TYPE_FORWARD;
     obj->size = size;
-    obj->fwd = new;
+    obj->ref[0] = new;
 }
 
 static void obj_pad(mps_addr_t addr, size_t size)
 {
-    struct obj_header *obj = addr;
-    obj->type = OBJ_FMT_TYPE_PADDING;
+    struct obj_stub *obj = addr;
+    obj->type = OBJ_MPS_TYPE_PADDING;
     obj->size = size;
 }
 
@@ -103,7 +93,7 @@ mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o, mps_thr_t *thr_o,
     return res;
 }
 
-mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o, mps_ap_t ap, struct obj_stub *obj)
+mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o, mps_ap_t ap, uint32_t size, uint16_t cljtype)
 {
     assert(addr_o != NULL && *addr_o == NULL);
     // TODO: caller needs to make sure to root addr_o before calling this!
