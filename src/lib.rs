@@ -21,9 +21,10 @@ pub type mps_addr_t = *mut libc::c_void;
 pub type mps_res_t = libc::c_int;
 
 extern {
-    pub static OBJ_FMT_TYPE_PAYLOAD: u16;
-    pub static OBJ_FMT_TYPE_FORWARD: u16;
-    pub static OBJ_FMT_TYPE_PADDING: u16;
+    pub static OBJ_MPS_TYPE_PADDING: u8;
+    pub static OBJ_MPS_TYPE_FORWARD: u8;
+    pub static OBJ_MPS_TYPE_OBJECT : u8;
+    pub static OBJ_MPS_TYPE_ARRAY  : u8;
 
     pub fn rust_mps_create_vm_area(arena_o: *mut mps_arena_t,
                                     thr_o: *mut mps_thr_t,
@@ -35,22 +36,20 @@ extern {
 
     pub fn rust_mps_alloc_obj(addr_o: *mut mps_addr_t,
                                 ap: mps_ap_t,
-                                obj: *mut libc::c_void) -> mps_res_t;
+                                size: u32, cljtype: u16, mpstype: u8) -> mps_res_t;
 
 }
 
-pub trait Info : Copy+'static {}
-
-#[repr(C, packed)]
-struct ObjStub<T: Info> {
-    fmt_type: u16,
-    offset: u16,
-    size: u32,
-    info_type: u64,
+#[repr(packed, C)]
+struct ObjStub {
+    mpstype: u8,
+    _: u8,
+    cljtype: u16,
+    size: u32
 }
 
-pub struct Obj<T: Info> {
-    addr: *mut ObjStub<T>
+pub struct ObjRef {
+    addr: *mut ObjStub
 }
 
 #[repr(packed, C)]
@@ -69,7 +68,7 @@ const TAG_DOUBLE_MAX: u16 = 0xFFF8;
 const TAG_DOUBLE_MIN: u16 = 0x0007;
 const TAG_POINTER_LO: u16 = 0x0000;
 
-impl<T> NanBox<T> {
+impl NanBox {
     #[inline]
     fn tag(self) -> u16 {
         (self.repr >> 48 & 0xFFFF) as u16
@@ -94,7 +93,7 @@ impl<T> NanBox<T> {
     }
 
     #[inline]
-    fn box_double(double: f64) -> NanBox<T> {
+    fn box_double(double: f64) -> NanBox {
         let bits: u64 = unsafe { mem::transmute(double) };
         let boxed = NanBox { repr: invert_non_negative(bits) };
         assert!(boxed.is_double());
@@ -102,14 +101,15 @@ impl<T> NanBox<T> {
     }
 
     #[inline]
-    fn unbox_pointer(self) -> *mut T {
+    fn unbox_objref(self) -> ObjRef {
         assert!(self.is_pointer());
-        unsafe { mem::transmute(self.repr) }
+
+        unsafe { mem::transmute(bits) }
     }
 
     #[inline]
-    fn box_pointer(ptr: *mut T) -> NanBox<T> {
-        let boxed = NanBox { repr: ptr.to_uint() as u64 };
+    fn box_objref(obj: ObjRef) -> NanBox {
+        let boxed = NanBox { repr: obj.addr.to_uint() as u64 };
         assert!(boxed.is_pointer());
         boxed
     }
@@ -199,8 +199,10 @@ fn test_nanbox() {
     let nb = NanBox::<()>::box_double(f);
     assert!(nb.unbox_double() == f);
 
-    let mut val: String = "Hi, there".to_string();
-    let nb = NanBox::box_pointer(&mut val);
-    let strptr: &mut String = unsafe { &mut *nb.unbox_pointer() };
-    assert!(strptr == &mut val)
+    let mut val = 23i32;
+    unsafe {
+        let nb = NanBox::box_pointer(&mut val);
+        let strptr: &mut i32 = &mut *nb.unbox_pointer();
+        assert!(strptr == &mut val)
+    }
 }

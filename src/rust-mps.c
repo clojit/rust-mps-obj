@@ -9,6 +9,9 @@
 
 #define ALIGNMENT sizeof(uint64_t)
 
+#define ALIGN_WORD(size) \
+  (((size) + ALIGNMENT - 1) & ~(ALIGNMENT - 1))
+
 uint8_t OBJ_MPS_TYPE_PADDING = 0x00;
 uint8_t OBJ_MPS_TYPE_FORWARD = 0x01;
 uint8_t OBJ_MPS_TYPE_OBJECT  = 0x02;
@@ -93,11 +96,25 @@ mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o, mps_thr_t *thr_o,
     return res;
 }
 
-mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o, mps_ap_t ap, uint32_t size, uint16_t cljtype)
+// caller needs to make sure to root addr_o before calling this!
+// size is the size in bytes (excluding alignment)
+mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o, mps_ap_t ap,
+    uint32_t size, uint16_t cljtype, uint8_t mpstype)
 {
     assert(addr_o != NULL && *addr_o == NULL);
-    // TODO: caller needs to make sure to root addr_o before calling this!
-    return MPS_RES_FAIL;
+    mps_res_t res;
+    size_t aligned_size = ALIGN_WORD(size);
+    do {
+        res = mps_reserve(addr_o, ap, aligned_size);
+        if (res != MPS_RES_OK) return res;
+        struct obj_stub *obj = *addr_o;
+
+        obj->type = mpstype;
+        obj->cljtype = cljtype;
+        obj->size = size;
+    } while (!mps_commit(ap, *addr_o, aligned_size));
+
+    return res;
 }
 
 mps_res_t rust_mps_create_obj_pool(mps_pool_t *pool_o, mps_ap_t *ap_o, mps_arena_t arena)
