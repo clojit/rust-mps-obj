@@ -61,7 +61,8 @@ static mps_addr_t obj_isfwd(mps_addr_t addr)
     return NULL;
 }
 
-static void obj_fwd(mps_addr_t old, mps_addr_t new)
+static void obj_fwd(mps_addr_t old,
+                    mps_addr_t new)
 {
     struct obj_stub *obj = old;
     mps_addr_t limit = obj_skip(old);
@@ -79,8 +80,9 @@ static void obj_pad(mps_addr_t addr, size_t size)
     obj->size = size;
 }
 
-mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o, mps_thr_t *thr_o,
-    size_t arenasize)
+mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o,
+                                  mps_thr_t *thr_o,
+                                  size_t arenasize)
 {
     mps_res_t res;
 
@@ -98,12 +100,18 @@ mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o, mps_thr_t *thr_o,
 
 // caller needs to make sure to root addr_o before calling this!
 // size is the size in bytes (excluding alignment)
-mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o, mps_ap_t ap,
-    uint32_t size, uint16_t cljtype, uint8_t mpstype)
+mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o,
+                             mps_ap_t ap,
+                             uint32_t size,
+                             uint16_t cljtype,
+                             uint8_t mpstype)
 {
     assert(addr_o != NULL && *addr_o == NULL);
     mps_res_t res;
-    size_t aligned_size = ALIGN_WORD(size);
+
+    uint32_t size_of_header = 4;
+
+    size_t aligned_size = ALIGN_WORD(size_of_header + size);
     do {
         res = mps_reserve(addr_o, ap, aligned_size);
         if (res != MPS_RES_OK) return res;
@@ -144,4 +152,25 @@ mps_res_t rust_mps_create_obj_pool(mps_pool_t *pool_o, mps_ap_t *ap_o, mps_arena
     res = mps_ap_create_k(ap_o, *pool_o, mps_args_none);
 
     return res;
+}
+
+mps_res_t rust_mps_root_create_table(mps_root_t* root_o,
+                                     mps_arena_t arena,
+                                     mps_addr_t*  base,
+                                     uint32_t count) {
+
+  mps_res_t res;
+  res = mps_root_create_table_masked(root_o, arena,
+                                     mps_rank_exact(),
+                                     (mps_rm_t)0,
+                                     base,
+                                     count,
+                                     (mps_word_t)0xFFFF000000000000);
+
+
+  return res;
+}
+
+void rust_mps_root_destroy (mps_root_t root_o) {
+  mps_root_destroy(root_o);
 }

@@ -1,6 +1,7 @@
+
+
 extern crate libc;
 
-use std::intrinsics;
 use std::mem;
 
 enum mps_arena_s {}
@@ -12,6 +13,10 @@ pub type mps_thr_t = *mut mps_thr_s;
 enum mps_pool_s {}
 pub type mps_pool_t = *mut mps_pool_s;
 
+
+enum mps_root_s { }
+pub type mps_root_t = *mut mps_root_s;
+
 enum mps_ap_s {}
 pub type mps_ap_t = *mut mps_ap_s;
 
@@ -19,6 +24,10 @@ pub type mps_ap_t = *mut mps_ap_s;
 pub type mps_addr_t = *mut libc::c_void;
 
 pub type mps_res_t = libc::c_int;
+
+
+
+
 
 extern {
     pub static OBJ_MPS_TYPE_PADDING: u8;
@@ -38,12 +47,19 @@ extern {
                                 ap: mps_ap_t,
                                 size: u32, cljtype: u16, mpstype: u8) -> mps_res_t;
 
+    pub fn rust_mps_root_create_table(root_o: *mut mps_root_t,
+                                      arena: mps_arena_t,
+                                      base: *mut mps_addr_t,
+                                      count: u32) -> mps_res_t;
+
+    pub fn rust_mps_root_destroy(root_o: mps_root_t);
+
 }
 
 #[repr(packed, C)]
 struct ObjStub {
     mpstype: u8,
-    _: u8,
+    unused: u8,
     cljtype: u16,
     size: u32
 }
@@ -53,7 +69,7 @@ pub struct ObjRef {
 }
 
 #[repr(packed, C)]
-pub struct NanBox<T> {
+pub struct NanBox {
     repr: u64
 }
 
@@ -70,54 +86,48 @@ const TAG_POINTER_LO: u16 = 0x0000;
 
 impl NanBox {
     #[inline]
-    fn tag(self) -> u16 {
+    fn tag(&self) -> u16 {
         (self.repr >> 48 & 0xFFFF) as u16
     }
 
+    // ObjRef
     #[inline]
-    fn is_double(self) -> bool {
+    fn is_objref(&self) -> bool {
+        self.tag() == TAG_POINTER_LO || self.tag() == TAG_POINTER_HI
+    }
+
+    // Double
+    #[inline]
+    fn is_double(&self) -> bool {
         self.tag() >= TAG_DOUBLE_MIN && self.tag() <= TAG_DOUBLE_MAX
     }
 
     #[inline]
-    fn is_pointer(self) -> bool {
-        self.tag() == TAG_POINTER_LO || self.tag() == TAG_POINTER_HI
-    }
-
-    #[inline]
-    fn unbox_double(self) -> f64 {
+    fn get_double(&self) -> f64 {
         assert!(self.is_double());
-
         let bits = invert_non_negative(self.repr);
         unsafe { mem::transmute(bits) }
     }
 
     #[inline]
-    fn box_double(double: f64) -> NanBox {
+    fn set_double(&mut self, double: f64) {
         let bits: u64 = unsafe { mem::transmute(double) };
-        let boxed = NanBox { repr: invert_non_negative(bits) };
-        assert!(boxed.is_double());
-        boxed
+        self.repr = invert_non_negative(bits);
+
+        assert!(self.is_double());
     }
 
-    #[inline]
-    fn unbox_objref(self) -> ObjRef {
-        assert!(self.is_pointer());
-
-        unsafe { mem::transmute(bits) }
-    }
-
-    #[inline]
-    fn box_objref(obj: ObjRef) -> NanBox {
-        let boxed = NanBox { repr: obj.addr.to_uint() as u64 };
-        assert!(boxed.is_pointer());
-        boxed
+    // unsafe new for null pointer Nanbox
+    unsafe fn new() -> NanBox {
+       NanBox { repr: 0 }
     }
 }
 
 struct Arena {
     arena: mps_arena_t,
     thread: mps_thr_t,
+    slots: Slots,
+    slots_root: mps_root_t
 }
 
 impl Arena {
@@ -129,7 +139,19 @@ impl Arena {
             let res = rust_mps_create_vm_area(&mut arena, &mut thread, arenasize);
             assert!(res == 0);
 
-            Arena { arena: arena, thread: thread }
+            let mut slots = Slots {
+                slot : unsafe { mem::transmute([0u64,..VM_MAX_SLOTS]) } ,
+            };
+
+            unsafe {
+                let mut root : mps_root_t = mem::zeroed();
+
+                let mut base = &mut slots as *mut _ as *mut libc::c_void;
+
+                let res = rust_mps_root_create_table(&mut root, arena, &mut base, VM_MAX_SLOTS as u32 );
+
+                Arena { arena: arena, thread: thread, slots: slots, slots_root: root}
+            }
         }
     }
 }
@@ -152,57 +174,47 @@ impl ObjPool {
         }
     }
 
-    fn alloc<T:Info>(&self, info: T, len: uint) -> Obj<T> {
+    fn alloc (&self, nanbox: &mut NanBox, cljtype: u16 , mpstype: u8, objsize: u32) {
         unsafe {
             let ap = self.ap;
 
-            let info_type_id = intrinsics::TypeId::of::<T>();
-
-            // rounded up to next multiple of 8
-            let info_size = (mem::size_of::<T>() + 7) & !0x7;
-
-            // header + info + payload
-            let size = 8 + info_size  + (len * 8);
-
-            let mut obj_stub: ObjStub<T> = ObjStub {
-                fmt_type: OBJ_FMT_TYPE_PAYLOAD,
-                offset: info_size as u16,
-                size: size as u32,
-                info_type: mem::transmute(info_type_id),
-            };
-
-
-            let obj_ptr = &mut obj_stub as *mut _ as *mut libc::c_void;
-
-            // TODO: need to root addr before allocating it!!
-            let mut addr: mps_addr_t = mem::zeroed();
-            let res = rust_mps_alloc_obj(&mut addr, ap, obj_ptr);
+            let res = rust_mps_alloc_obj(mem::transmute(nanbox.repr),
+                                         ap,
+                                         objsize,
+                                         cljtype,
+                                         mpstype);
             assert!(res == 0);
-
-            Obj { addr: addr as *mut ObjStub<T> }
         }
     }
 }
 
 
+const VM_MAX_SLOTS : uint = 20000u;
+
+pub struct Slots {
+    pub slot : [NanBox,..VM_MAX_SLOTS],
+}
+
 
 #[test]
 fn create_arena() {
     let a = Arena::new(32 * 1024 * 1024);
-
     let p = ObjPool::new(a);
 }
+
 
 #[test]
 fn test_nanbox() {
     let f = 0.1234f64;
-    let nb = NanBox::<()>::box_double(f);
-    assert!(nb.unbox_double() == f);
 
-    let mut val = 23i32;
+    let mut a = Arena::new(32 * 1024 * 1024);
+
+    a.slots.slot[0].set_double(f);
+
     unsafe {
-        let nb = NanBox::box_pointer(&mut val);
-        let strptr: &mut i32 = &mut *nb.unbox_pointer();
-        assert!(strptr == &mut val)
+      rust_mps_root_destroy(a.slots_root);
     }
+
+    assert!(a.slots.slot[0].get_double() == f);
 }
+
