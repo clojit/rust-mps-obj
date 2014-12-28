@@ -4,23 +4,17 @@ rust-mps-obj
 An attempt to create a bindings for dynamic objects which are managed by
 the Memory Pool System.
 
-              0      2      4            8
-              +------+------+------------+ <- 0
-              | type |offset| size       |
-              +--------------------------+
-              | rust info type id        |
-              +--------------------------+ <- 16
-              | info data (plain data)   |
-              |                          |
-              |                          |
-              +--------------------------+ <- offset
-              | tagged reference         |
-              +--------------------------+
-              | tagged reference         |
-              +--------------------------+
-              | tagged reference         |
-              +--------------------------+
-              | tagged reference         |
-              +--------------------------+ <- size
+              0   1   2       4            8
+              +---+---+-------+-------------+ <- 0
+              |mps|   |cljtype|size         |
+              +-----------------------------+
+              | tagged reference            |
+              +-----------------------------+
+              | tagged reference            |
+              +-----------------------------+
+              | tagged reference            |
+              +-----------------------------+
+              | tagged reference            |
+              +-----------------------------+ <- size
 
 Licensed under the Sleepycat License: http://opensource.org/licenses/sleepycat
