@@ -157,7 +157,7 @@ mps_res_t rust_mps_create_obj_pool(mps_pool_t *pool_o, mps_ap_t *ap_o, mps_arena
 mps_res_t rust_mps_root_create_table(mps_root_t* root_o,
                                      mps_arena_t arena,
                                      mps_addr_t*  base,
-                                     uint32_t count) {
+                                     size_t count) {
 
   mps_res_t res;
   res = mps_root_create_table_masked(root_o, arena,

@@ -50,7 +50,7 @@ extern {
     pub fn rust_mps_root_create_table(root_o: *mut mps_root_t,
                                       arena: mps_arena_t,
                                       base: *mut mps_addr_t,
-                                      count: u32) -> mps_res_t;
+                                      count: libc::size_t) -> mps_res_t;
 
     pub fn rust_mps_root_destroy(root_o: mps_root_t);
 
@@ -62,10 +62,6 @@ struct ObjStub {
     unused: u8,
     cljtype: u16,
     size: u32
-}
-
-pub struct ObjRef {
-    addr: *mut ObjStub
 }
 
 #[repr(packed, C)]
@@ -140,18 +136,16 @@ impl Arena {
             assert!(res == 0);
 
             let mut slots = Slots {
-                slot : unsafe { mem::transmute([0u64,..VM_MAX_SLOTS]) } ,
+                slot : mem::transmute([0u64,..VM_MAX_SLOTS]),
             };
 
-            unsafe {
-                let mut root : mps_root_t = mem::zeroed();
+            let mut root: mps_root_t = mem::zeroed();
+            let mut base = &mut slots as *mut _ as *mut libc::c_void;
+            let res = rust_mps_root_create_table(&mut root, arena, &mut base,
+                                                    VM_MAX_SLOTS as libc::size_t );
+            assert!(res == 0);
 
-                let mut base = &mut slots as *mut _ as *mut libc::c_void;
-
-                let res = rust_mps_root_create_table(&mut root, arena, &mut base, VM_MAX_SLOTS as u32 );
-
-                Arena { arena: arena, thread: thread, slots: slots, slots_root: root}
-            }
+            Arena { arena: arena, thread: thread, slots: slots, slots_root: root}
         }
     }
 }
@@ -193,13 +187,6 @@ const VM_MAX_SLOTS : uint = 20000u;
 
 pub struct Slots {
     pub slot : [NanBox,..VM_MAX_SLOTS],
-}
-
-
-#[test]
-fn create_arena() {
-    let a = Arena::new(32 * 1024 * 1024);
-    let p = ObjPool::new(a);
 }
 
 
