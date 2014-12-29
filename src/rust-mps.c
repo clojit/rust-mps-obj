@@ -109,7 +109,7 @@ mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o,
     assert(addr_o != NULL && *addr_o == NULL);
     mps_res_t res;
 
-    uint32_t size_of_header = 4;
+    uint32_t size_of_header = 8;
 
     size_t aligned_size = ALIGN_WORD(size_of_header + size);
     do {

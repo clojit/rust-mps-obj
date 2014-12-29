@@ -60,7 +60,7 @@ extern {
 struct ObjStub {
     mpstype: u8,
     unused: u8,
-    cljtype: u16,
+    cljtyVM_MAX_SLOTSpe: u16,
     size: u32
 }
 
@@ -119,12 +119,34 @@ impl NanBox {
     }
 }
 
+
+
 struct Arena {
-    arena: mps_arena_t,
+    arena : mps_arena_t,
     thread: mps_thr_t,
-    slots: Slots,
-    slots_root: mps_root_t
+    slots_roots : Slots_Roots,
+    pools : Pools
 }
+
+struct Slots_Roots {
+    slots: Slots,
+    roots : Option<mps_root_t>
+}
+
+struct Pools {
+    amc:ObjPool
+}
+
+struct ObjPool {
+    ap: mps_ap_t,
+    pool: mps_pool_t,
+}
+
+pub struct Slots {
+    pub slot : [NanBox,..VM_MAX_SLOTS],
+}
+
+
 
 impl Arena {
     fn new(size: uint) -> Arena {
@@ -139,29 +161,32 @@ impl Arena {
                 slot : mem::transmute([0u64,..VM_MAX_SLOTS]),
             };
 
+            let mut slots_roots = Slots_Roots { slots: slots, roots: None};
+
             let mut root: mps_root_t = mem::zeroed();
-            let mut base = &mut slots as *mut _ as *mut libc::c_void;
-            let res = rust_mps_root_create_table(&mut root, arena, &mut base,
-                                                    VM_MAX_SLOTS as libc::size_t );
+            let mut base = &mut slots_roots.slots as *mut _ as *mut libc::c_void;
+            let res = rust_mps_root_create_table(&mut root, arena,
+                                                 &mut base,
+                                                 VM_MAX_SLOTS as libc::size_t );
             assert!(res == 0);
 
-            Arena { arena: arena, thread: thread, slots: slots, slots_root: root}
+            let pools = Pools {
+              amc: ObjPool::new(arena)
+            };
+
+            Arena { arena: arena, thread: thread, slots_roots: slots_roots, pools:pools}
         }
     }
 }
 
-struct ObjPool {
-    ap: mps_ap_t,
-    pool: mps_pool_t,
-}
+
 
 impl ObjPool {
-    fn new(arena: Arena) -> ObjPool {
+    fn new(arena : mps_arena_t) -> ObjPool {
         unsafe {
-            let arena_ptr: mps_arena_t = arena.arena;
             let mut pool: mps_pool_t = mem::zeroed();
             let mut ap: mps_ap_t = mem::zeroed();
-            let res = rust_mps_create_obj_pool(&mut pool, &mut ap, arena_ptr);
+            let res = rust_mps_create_obj_pool(&mut pool, &mut ap, arena);
             assert!(res == 0);
 
             ObjPool { ap: ap, pool: pool }
@@ -182,14 +207,10 @@ impl ObjPool {
     }
 }
 
-
 const VM_MAX_SLOTS : uint = 20000u;
 
-pub struct Slots {
-    pub slot : [NanBox,..VM_MAX_SLOTS],
-}
 
-
+/*
 #[test]
 fn test_nanbox() {
     let f = 0.1234f64;
@@ -203,5 +224,26 @@ fn test_nanbox() {
     }
 
     assert!(a.slots.slot[0].get_double() == f);
+}*/
+
+
+#[test]
+fn test_nanbox() {
+    let f = 0.1234f64;
+
+    let mut a = Arena::new(32 * 1024 * 1024);
+
+    a.pools.amc.alloc( &mut a.slots_roots.slots.slot[0], 1, 2, 16);
+
+    unsafe {
+      match (a.slots_roots.roots) {
+        Some(roots) => rust_mps_root_destroy(roots),
+        None => ()
+      }
+    }
+
+    assert!(a.slots_roots.slots.slot[0].get_double() == f);
 }
+
+
 
