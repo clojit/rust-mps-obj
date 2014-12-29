@@ -9,6 +9,8 @@
 
 #define ALIGNMENT sizeof(uint64_t)
 
+#define HEADER_SIZE sizeof(uint64_t)
+
 #define ALIGN_WORD(size) \
   (((size) + ALIGNMENT - 1) & ~(ALIGNMENT - 1))
 
@@ -106,21 +108,21 @@ mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o,
                              uint16_t cljtype,
                              uint8_t mpstype)
 {
-    assert(addr_o != NULL && *addr_o == NULL);
+    assert(addr_o != NULL);
     mps_res_t res;
 
-    uint32_t size_of_header = 8;
-
-    size_t aligned_size = ALIGN_WORD(size_of_header + size);
     do {
-        res = mps_reserve(addr_o, ap, aligned_size);
+        res = mps_reserve(addr_o, ap, size);
         if (res != MPS_RES_OK) return res;
         struct obj_stub *obj = *addr_o;
 
         obj->type = mpstype;
         obj->cljtype = cljtype;
         obj->size = size;
-    } while (!mps_commit(ap, *addr_o, aligned_size));
+
+        // zero all fields
+        memset(obj->ref, 0, size - HEADER_SIZE);
+    } while (!mps_commit(ap, *addr_o, size));
 
     return res;
 }
@@ -154,9 +156,9 @@ mps_res_t rust_mps_create_obj_pool(mps_pool_t *pool_o, mps_ap_t *ap_o, mps_arena
     return res;
 }
 
-mps_res_t rust_mps_root_create_table(mps_root_t* root_o,
+mps_res_t rust_mps_root_create_table(mps_root_t *root_o,
                                      mps_arena_t arena,
-                                     mps_addr_t*  base,
+                                     mps_addr_t  *base,
                                      size_t count) {
 
   mps_res_t res;

@@ -60,13 +60,20 @@ extern {
 struct ObjStub {
     mpstype: u8,
     unused: u8,
-    cljtyVM_MAX_SLOTSpe: u16,
+    cljtype: u16,
     size: u32
 }
 
 #[repr(packed, C)]
 pub struct NanBox {
-    repr: u64
+    repr: u64,
+    _marker: std::kinds::marker::NoCopy
+}
+
+pub struct CljType {
+    name: String,
+    id: u16,
+    size: u32,
 }
 
 #[inline]
@@ -92,6 +99,10 @@ impl NanBox {
         self.tag() == TAG_POINTER_LO || self.tag() == TAG_POINTER_HI
     }
 
+    fn is_null(&self) -> bool {
+        self.repr == 0
+    }
+
     // Double
     #[inline]
     fn is_double(&self) -> bool {
@@ -113,10 +124,34 @@ impl NanBox {
         assert!(self.is_double());
     }
 
-    // unsafe new for null pointer Nanbox
-    unsafe fn new() -> NanBox {
-       NanBox { repr: 0 }
+    fn alloc_obj(&mut self, ap: mps_ap_t, cljtype: u16, count: u32) {
+        unsafe {
+            // size in bytes, including header
+            let size = 8 + (count * 8);
+            let res = rust_mps_alloc_obj(mem::transmute(&mut self.repr),
+                                         ap,
+                                         size,
+                                         cljtype,
+                                         OBJ_MPS_TYPE_OBJECT);
+            assert!(res == 0);
+        }
     }
+
+    fn get_field(&mut self, idx: u16) -> &mut NanBox {
+        unsafe {
+            assert!(self.is_objref());
+            let self_ptr = self as *mut NanBox;
+            let field_ptr: *mut NanBox = self_ptr.offset(1 + (idx as int));
+
+            // RawPtr.as_ref() returns immutable &NanBox, even for *mut NanBox
+            mem::transmute(field_ptr)
+        }
+    }
+
+    // unsafe new for null pointer Nanbox
+    /*unsafe fn new() -> NanBox {
+       NanBox { repr: 0 }
+    }*/
 }
 
 
@@ -124,17 +159,12 @@ impl NanBox {
 struct Arena {
     arena : mps_arena_t,
     thread: mps_thr_t,
-    slots_roots : Slots_Roots,
+    slots : Slots,
     pools : Pools
 }
 
-struct Slots_Roots {
-    slots: Slots,
-    roots : Option<mps_root_t>
-}
-
 struct Pools {
-    amc:ObjPool
+    amc: ObjPool
 }
 
 struct ObjPool {
@@ -144,6 +174,7 @@ struct ObjPool {
 
 pub struct Slots {
     pub slot : [NanBox,..VM_MAX_SLOTS],
+    root: mps_root_t
 }
 
 
@@ -158,23 +189,21 @@ impl Arena {
             assert!(res == 0);
 
             let mut slots = Slots {
-                slot : mem::transmute([0u64,..VM_MAX_SLOTS]),
+                slot: mem::transmute([0u64,..VM_MAX_SLOTS]),
+                root: mem::zeroed()
             };
 
-            let mut slots_roots = Slots_Roots { slots: slots, roots: None};
-
-            let mut root: mps_root_t = mem::zeroed();
-            let mut base = &mut slots_roots.slots as *mut _ as *mut libc::c_void;
-            let res = rust_mps_root_create_table(&mut root, arena,
-                                                 &mut base,
+            let base: *mut mps_addr_t = mem::transmute(&mut slots.slot);
+            let res = rust_mps_root_create_table(&mut slots.root, arena,
+                                                 base,
                                                  VM_MAX_SLOTS as libc::size_t );
             assert!(res == 0);
 
             let pools = Pools {
-              amc: ObjPool::new(arena)
+                amc: ObjPool::new(arena)
             };
 
-            Arena { arena: arena, thread: thread, slots_roots: slots_roots, pools:pools}
+            Arena { arena: arena, thread: thread, slots: slots, pools:pools}
         }
     }
 }
@@ -193,18 +222,7 @@ impl ObjPool {
         }
     }
 
-    fn alloc (&self, nanbox: &mut NanBox, cljtype: u16 , mpstype: u8, objsize: u32) {
-        unsafe {
-            let ap = self.ap;
 
-            let res = rust_mps_alloc_obj(mem::transmute(nanbox.repr),
-                                         ap,
-                                         objsize,
-                                         cljtype,
-                                         mpstype);
-            assert!(res == 0);
-        }
-    }
 }
 
 const VM_MAX_SLOTS : uint = 20000u;
@@ -231,18 +249,24 @@ fn test_nanbox() {
 fn test_nanbox() {
     let f = 0.1234f64;
 
-    let mut a = Arena::new(32 * 1024 * 1024);
+    let mut arena = Arena::new(32 * 1024 * 1024);
 
-    a.pools.amc.alloc( &mut a.slots_roots.slots.slot[0], 1, 2, 16);
+    // allocate object of type 1 with 3 fields
+    let nanbox: &mut NanBox = &mut arena.slots.slot[0];
+    nanbox.alloc_obj(arena.pools.amc.ap, 1, 3);
+    {
+        let field = nanbox.get_field(0);
+        assert!(field.is_null());
+
+        field.set_double(2.342);
+        assert!(field.is_double());
+        assert!(field.get_double() == 2.342);
+    }
+    assert!(nanbox.is_objref());
 
     unsafe {
-      match (a.slots_roots.roots) {
-        Some(roots) => rust_mps_root_destroy(roots),
-        None => ()
-      }
+        rust_mps_root_destroy(arena.slots.root);
     }
-
-    assert!(a.slots_roots.slots.slot[0].get_double() == f);
 }
 
 
