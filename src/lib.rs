@@ -148,10 +148,9 @@ impl NanBox {
         }
     }
 
-    // unsafe new for null pointer Nanbox
-    /*unsafe fn new() -> NanBox {
-       NanBox { repr: 0 }
-    }*/
+    fn replace(&mut self, other: &mut NanBox) {
+        self.repr = other.repr;
+    }
 }
 
 
@@ -177,6 +176,13 @@ pub struct Slots {
     root: mps_root_t
 }
 
+
+/*
+TODO
+impl Index for Slots {
+    ...
+}
+*/
 
 
 impl Arena {
@@ -261,6 +267,8 @@ fn test_nanbox() {
         field.set_double(2.342);
         assert!(field.is_double());
         assert!(field.get_double() == 2.342);
+
+        //let tmp: &mut NanBox = &mut arena.slots.slot[1];
     }
     assert!(nanbox.is_objref());
 
