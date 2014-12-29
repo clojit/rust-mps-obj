@@ -25,10 +25,6 @@ pub type mps_addr_t = *mut libc::c_void;
 
 pub type mps_res_t = libc::c_int;
 
-
-
-
-
 extern {
     pub static OBJ_MPS_TYPE_PADDING: u8;
     pub static OBJ_MPS_TYPE_FORWARD: u8;
@@ -152,8 +148,6 @@ impl NanBox {
         self.repr = other.repr;
     }
 }
-
-
 
 struct Arena {
     arena : mps_arena_t,
