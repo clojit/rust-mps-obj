@@ -83,7 +83,7 @@ static void obj_pad(mps_addr_t addr, size_t size)
 }
 
 mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o,
-                                  mps_thr_t *thr_o,
+                                  //mps_thr_t *thr_o,
                                   size_t arenasize)
 {
     mps_res_t res;
@@ -92,10 +92,6 @@ mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o,
         MPS_ARGS_ADD(args, MPS_KEY_ARENA_SIZE, arenasize);
         res = mps_arena_create_k(arena_o, mps_arena_class_vm(),  args);
     } MPS_ARGS_END(args);
-
-    if (res != MPS_RES_OK) return res;
-
-    res = mps_thread_reg(thr_o, *arena_o);
 
     return res;
 }
@@ -127,11 +123,9 @@ mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o,
     return res;
 }
 
-mps_res_t rust_mps_create_obj_pool(mps_pool_t *pool_o, mps_ap_t *ap_o, mps_arena_t arena)
+mps_res_t rust_mps_create_amc_pool(mps_pool_t *pool_o, mps_fmt_t *fmt_o, mps_arena_t arena)
 {
     mps_res_t res;
-    mps_fmt_t obj_fmt;
-
     MPS_ARGS_BEGIN(args) {
         MPS_ARGS_ADD(args, MPS_KEY_FMT_ALIGN, ALIGNMENT);
         MPS_ARGS_ADD(args, MPS_KEY_FMT_SCAN, obj_scan);
@@ -139,19 +133,15 @@ mps_res_t rust_mps_create_obj_pool(mps_pool_t *pool_o, mps_ap_t *ap_o, mps_arena
         MPS_ARGS_ADD(args, MPS_KEY_FMT_FWD, obj_fwd);
         MPS_ARGS_ADD(args, MPS_KEY_FMT_ISFWD, obj_isfwd);
         MPS_ARGS_ADD(args, MPS_KEY_FMT_PAD, obj_pad);
-        res = mps_fmt_create_k(&obj_fmt, arena, args);
+        res = mps_fmt_create_k(fmt_o, arena, args);
     } MPS_ARGS_END(args);
 
     if (res != MPS_RES_OK) return res;
 
     MPS_ARGS_BEGIN(args) {
-        MPS_ARGS_ADD(args, MPS_KEY_FORMAT, obj_fmt);
+        MPS_ARGS_ADD(args, MPS_KEY_FORMAT, *fmt_o);
         res = mps_pool_create_k(pool_o, arena, mps_class_amc(), args);
     } MPS_ARGS_END(args);
-
-    if (res != MPS_RES_OK) return res;
-
-    res = mps_ap_create_k(ap_o, *pool_o, mps_args_none);
 
     return res;
 }
@@ -161,18 +151,15 @@ mps_res_t rust_mps_root_create_table(mps_root_t *root_o,
                                      mps_addr_t  *base,
                                      size_t count) {
 
-  mps_res_t res;
-  res = mps_root_create_table_masked(root_o, arena,
+  return mps_root_create_table_masked(root_o, arena,
                                      mps_rank_exact(),
                                      (mps_rm_t)0,
                                      base,
                                      count,
                                      (mps_word_t)0xFFFF000000000000);
 
-
-  return res;
 }
 
-void rust_mps_root_destroy (mps_root_t root_o) {
-  mps_root_destroy(root_o);
+mps_res_t rust_mps_create_ap(mps_ap_t *ap_o, mps_pool_t pool) {
+    return mps_ap_create_k(ap_o, pool, mps_args_none);
 }
