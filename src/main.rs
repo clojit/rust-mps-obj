@@ -11,14 +11,8 @@ use ffi::*;
 
 mod ffi;
 
-/*
-#[repr(packed, C)]
-struct ObjStub {
-    mpstype: u8,
-    unused: u8,
-    cljtype: u16,
-    size: u32
-}*/
+pub const HEADER_SIZE: u32 = 8;
+pub const NANBOX_SIZE: u32 = 8;
 
 #[repr(packed, C)]
 #[deriving(PartialEq, Show)]
@@ -62,11 +56,11 @@ impl<'a> Value<'a> {
     }
 }
 
-/*pub struct CljType {
-    name: String,
+#[allow(missing_copy_implementations)]
+pub struct CljType {
     id: u16,
     size: u32,
-}*/
+}
 
 #[inline]
 fn invert_non_negative(repr: u64) -> u64 {
@@ -130,19 +124,37 @@ impl NanBox {
             unreachable!()
         }
     }
+}
+
+impl<'a> ObjRef<'a> {
+    fn getfield(&self, idx: u16) -> Value<'a> {
+        // TODO check for size
+
+        let ObjRef(nanbox) = *self;
+        unsafe {
+            let obj_header: *const NanBox = mem::transmute(nanbox.repr);
+            let field = obj_header.offset(1 + (idx as int));
+
+            (&*field).load()
+        }
+    }
+
+    fn setfield(&mut self, idx: u16, value: Value) {
+        // TODO check for size
+
+        let ObjRef(nanbox) = *self;
+        unsafe {
+            let obj_header: *mut NanBox = mem::transmute(nanbox.repr);
+            let field = obj_header.offset(1 + (idx as int));
+
+            (&mut *field).store(value);
+        }
+    }
+}
 
 /*
     fn alloc_obj(&mut self, ap: mps_ap_t, cljtype: u16, count: u32) {
-        unsafe {
-            // size in bytes, including header
-            let size = 8 + (count * 8);
-            let res = rust_mps_alloc_obj(mem::transmute(&mut self.repr),
-                                         ap,
-                                         size,
-                                         cljtype,
-                                         OBJ_MPS_TYPE_OBJECT);
-            assert!(res == 0);
-        }
+
     }
 
     fn get_field(&mut self, idx: u16) -> &mut NanBox {
@@ -160,7 +172,7 @@ impl NanBox {
         self.repr = other.repr;
     }
 */
-}
+
 
 pub struct MemoryPoolSystem {
     arena: mps_arena_t,
@@ -194,6 +206,19 @@ impl MemoryPoolSystem {
 
         MemoryPoolSystem { arena: arena, amc: amc, fmt: fmt }
     }
+
+    pub fn gc(&self) {
+        unsafe {
+            mps_arena_collect(self.arena);
+            mps_arena_release(self.arena);
+        }
+    }
+
+    pub fn debug_printwalk(&self) {
+        unsafe {
+            rust_mps_debug_print_reachable(self.arena, self.fmt);
+        }
+    }
 }
 
 impl Drop for MemoryPoolSystem {
@@ -210,23 +235,38 @@ impl Drop for MemoryPoolSystem {
 
 pub type Slot = NanBox;
 
-pub struct MemoryContext<'a> {
-    thread: mps_thr_t,
-    amc_ap: mps_ap_t,
+pub struct Context<'a> {
     pub slot: Slots<'a>,
-}
 
-pub struct Slots<'a> {
-    root: mps_root_t,
-    _mmap: MemoryMap,
-    slice: &'a mut [Slot],
+    // mps thread which is represented by this context
+    thread: mps_thr_t,
 
+    // marker to bind our lifetime to MemoryPoolSystem object
     marker: marker::ContravariantLifetime<'a>,
 }
 
-impl<'a> MemoryContext<'a> {
+pub struct Slots<'a> {
+    // allocation point for objects
+    amc_ap: mps_ap_t,
 
-    pub fn new(slots: Slots<'a>, mps: &'a MemoryPoolSystem) -> MemoryContext<'a> {
+    // base offset for slots array
+    base: uint,
+
+    // memory mapped slots array
+    #[allow(dead_code)]
+    mmap: MemoryMap,
+    slice: &'a mut [Slot],
+
+    // registered root for slots array
+    root: mps_root_t,
+
+    // marker to bind our lifetime to MemoryPoolSystem object
+    marker: marker::ContravariantLifetime<'a>,
+}
+
+impl<'a> Context<'a> {
+
+    pub fn new(slot_count: uint, mps: &'a MemoryPoolSystem) -> Context<'a> {
         let thread = unsafe {
             let mut thread = mem::zeroed();
             let res = mps_thread_reg(&mut thread, mps.arena);
@@ -234,35 +274,27 @@ impl<'a> MemoryContext<'a> {
             thread
         };
 
-        let amc_ap = unsafe {
-            let mut ap = mem::zeroed();
-            let res = rust_mps_create_ap(&mut ap, mps.amc);
-            assert!(res == 0);
-            ap
-        };
-
-        MemoryContext {
+        Context {
             thread: thread,
-            amc_ap: amc_ap,
-            slot: slots
+            slot: Slots::new(slot_count, mps),
+            marker: marker::ContravariantLifetime,
         }
     }
 
 }
 
 #[unsafe_destructor]
-impl<'a> Drop for MemoryContext<'a> {
+impl<'a> Drop for Context<'a> {
     fn drop(&mut self) {
         // FIXME: is it safe to deregister the thread before the roots?
         unsafe {
-            mps_ap_destroy(self.amc_ap);
             mps_thread_dereg(self.thread);
         }
     }
 }
 
 impl<'a> Slots<'a> {
-    pub fn new(slot_count: uint, mps: &'a MemoryPoolSystem) -> Slots<'a> {
+    fn new(slot_count: uint, mps: &'a MemoryPoolSystem) -> Slots<'a> {
         let mmap = {
             let size = slot_count * mem::size_of::<Slot>();
             let options = [MapOption::MapReadable, MapOption::MapWritable];
@@ -284,11 +316,37 @@ impl<'a> Slots<'a> {
             root
         };
 
+        let amc_ap = unsafe {
+            let mut ap = mem::zeroed();
+            let res = rust_mps_create_ap(&mut ap, mps.amc);
+            assert!(res == 0);
+            ap
+        };
+
         Slots {
-            root: root,
-            _mmap: mmap,
+            mmap: mmap,
+            base: 0,
             slice: slice,
+            root: root,
+            amc_ap: amc_ap,
+
             marker: marker::ContravariantLifetime,
+        }
+    }
+
+    // FIXME: with the IndexSet trait, we can make this nicer
+    pub fn alloc(&mut self, dst: uint, cljtype: &CljType) {
+        unsafe {
+            let ap = self.amc_ap;
+            let dst = &mut self[dst];
+            // size in bytes, including header
+            let size = HEADER_SIZE + (cljtype.size * NANBOX_SIZE);
+            let res = rust_mps_alloc_obj(mem::transmute(&mut dst.repr),
+                                         ap,
+                                         size,
+                                         cljtype.id,
+                                         OBJ_MPS_TYPE_OBJECT);
+            assert!(res == 0);
         }
     }
 }
@@ -297,6 +355,7 @@ impl<'a> Slots<'a> {
 impl<'a> Drop for Slots<'a> {
     fn drop(&mut self) {
         unsafe {
+            mps_ap_destroy(self.amc_ap);
             mps_root_destroy(self.root);
         }
     }
@@ -305,22 +364,59 @@ impl<'a> Drop for Slots<'a> {
 impl<'a> Index<uint, Slot> for Slots<'a> {
     #[inline]
     fn index(&self, index: &uint) -> &Slot {
-        &self.slice[*index]
+        &self.slice[self.base + *index]
     }
 }
 
 impl<'a> IndexMut<uint, Slot> for Slots<'a> {
     #[inline]
     fn index_mut(&mut self, index: &uint) -> &mut Slot {
-        &mut self.slice[*index]
+        &mut self.slice[self.base + *index]
     }
 }
 
 fn main() {
     let mps = MemoryPoolSystem::new(32*1024*1024);
-    let slots = Slots::new(2048, &mps);
-    let mut ctx = MemoryContext::new(slots, &mps);
+    let mut ctx = Context::new(2048, &mps);
+
+    mps.debug_printwalk();
 
     ctx.slot[0].store(Value::Float(3.14));
-    println!("{}", ctx.slot[0].load().float());
+
+    let ty = CljType { size: 3, id: 42 };
+    ctx.slot.alloc(1, &ty);
+    ctx.slot.alloc(2, &ty);
+
+    mps.debug_printwalk();
+
+    {
+        // obj2.field0 = obj1
+        let obj1 = ctx.slot[1].load().obj();
+        let mut obj2 = ctx.slot[2].load().obj();
+        obj2.setfield(0, Value::Obj(obj1));
+
+        // obj1.field0 = obj2
+        let mut obj1 = ctx.slot[1].load().obj();
+        let obj2 = ctx.slot[2].load().obj();
+        obj1.setfield(0, Value::Obj(obj2));
+
+        mps.debug_printwalk();
+
+        // obj1.field1 = slot[0]
+        obj1.setfield(1, ctx.slot[0].load());
+        assert_eq!(obj1.getfield(1).float(), 3.14);
+
+        mps.debug_printwalk();
+    }
+
+    // end of above mutable borrows
+    ctx.slot[1].store(Value::Nil);
+    ctx.slot[2].store(Value::Nil);
+
+
+    mps.debug_printwalk();
+
+    mps.gc();
+
+    mps.debug_printwalk();
 }

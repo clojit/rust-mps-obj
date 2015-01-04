@@ -50,6 +50,8 @@ extern {
 
     pub fn rust_mps_create_ap(ap_o: *mut mps_ap_t, pool: mps_pool_t) -> mps_res_t;
 
+    pub fn rust_mps_debug_print_reachable(arena: mps_arena_t, fmt: mps_fmt_t);
+
     pub fn mps_thread_reg(thr_o: *mut mps_thr_t, arena: mps_arena_t) -> mps_res_t;
 
     pub fn mps_root_destroy(root: mps_root_t);
@@ -58,4 +60,7 @@ extern {
     pub fn mps_pool_destroy(pool: mps_pool_t);
     pub fn mps_fmt_destroy(fmt: mps_fmt_t);
     pub fn mps_arena_destroy(arena: mps_arena_t);
+
+    pub fn mps_arena_collect(arena: mps_arena_t);
+    pub fn mps_arena_release(arena: mps_arena_t);
 }

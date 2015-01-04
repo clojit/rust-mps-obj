@@ -1,15 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <assert.h>
+#include <string.h>
 
 #include "mps.h"
 #include "mpsavm.h"
 #include "mpscamc.h"
 
-#define ALIGNMENT sizeof(uint64_t)
-
-#define HEADER_SIZE sizeof(uint64_t)
+#define WORD_SIZE   sizeof(uint64_t)
+#define ALIGNMENT   WORD_SIZE
+#define HEADER_SIZE WORD_SIZE
 
 #define ALIGN_WORD(size) \
   (((size) + ALIGNMENT - 1) & ~(ALIGNMENT - 1))
@@ -18,6 +19,15 @@ uint8_t OBJ_MPS_TYPE_PADDING = 0x00;
 uint8_t OBJ_MPS_TYPE_FORWARD = 0x01;
 uint8_t OBJ_MPS_TYPE_OBJECT  = 0x02;
 uint8_t OBJ_MPS_TYPE_ARRAY   = 0x03;
+
+static const char *OBJ_MPS_TYPE_NAMES[] = {
+    "Padding", "Forward", "Object", "Array"
+};
+
+#define ARRAY_LEN(array)    (sizeof(array) / sizeof(array[0]))
+
+#define VAL_BITS (48u)
+#define TAG_MASK (0xFFFFul << VAL_BITS)
 
 struct obj_stub {
     uint8_t type;
@@ -83,7 +93,6 @@ static void obj_pad(mps_addr_t addr, size_t size)
 }
 
 mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o,
-                                  //mps_thr_t *thr_o,
                                   size_t arenasize)
 {
     mps_res_t res;
@@ -97,7 +106,7 @@ mps_res_t rust_mps_create_vm_area(mps_arena_t *arena_o,
 }
 
 // caller needs to make sure to root addr_o before calling this!
-// size is the size in bytes (excluding alignment)
+// size is the size in bytes (including header)
 mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o,
                              mps_ap_t ap,
                              uint32_t size,
@@ -105,6 +114,7 @@ mps_res_t rust_mps_alloc_obj(mps_addr_t *addr_o,
                              uint8_t mpstype)
 {
     assert(addr_o != NULL);
+    assert(size > HEADER_SIZE);
     mps_res_t res;
 
     do {
@@ -156,10 +166,41 @@ mps_res_t rust_mps_root_create_table(mps_root_t *root_o,
                                      (mps_rm_t)0,
                                      base,
                                      count,
-                                     (mps_word_t)0xFFFF000000000000);
+                                     (mps_word_t)TAG_MASK);
 
 }
 
 mps_res_t rust_mps_create_ap(mps_ap_t *ap_o, mps_pool_t pool) {
     return mps_ap_create_k(ap_o, pool, mps_args_none);
+}
+
+static void rust_mps_debug_print_formatted_object(mps_addr_t addr,
+                                            mps_fmt_t fmt,
+                                            mps_pool_t pool,
+                                            void *p, size_t s) {
+    assert(p == fmt);
+    struct obj_stub *obj = addr;
+    assert(obj->type < ARRAY_LEN(OBJ_MPS_TYPE_NAMES));
+
+    const char *mps_type = OBJ_MPS_TYPE_NAMES[obj->type];
+    fprintf(stderr, "%s(0x%012"PRIxPTR") [%"PRIu32" bytes] ", mps_type, (uintptr_t)addr, obj->size);
+    if (obj->type == OBJ_MPS_TYPE_OBJECT || obj->type == OBJ_MPS_TYPE_ARRAY) {
+        fprintf(stderr, "[type: %"PRIu16"]", obj->cljtype);
+    }
+    fprintf(stderr, "\n");
+
+    if (obj->type == OBJ_MPS_TYPE_OBJECT) {
+        size_t count = (obj->size - HEADER_SIZE) / WORD_SIZE;
+        for (size_t i=0; i<count; i++) {
+            uint16_t tag = ((uintptr_t)obj->ref[i] & TAG_MASK) >> VAL_BITS;
+            uint64_t val = (uintptr_t)obj->ref[i] & ~TAG_MASK;
+
+            fprintf(stderr, "  0x%04"PRIx16":%012"PRIx64"\n", tag, val);
+        }
+    }
+}
+
+void rust_mps_debug_print_reachable(mps_arena_t arena, mps_fmt_t fmt) {
+    fprintf(stderr, "==== Walking Reachable Objects ====\n");
+    mps_arena_formatted_objects_walk(arena, rust_mps_debug_print_formatted_object, fmt, 0);
 }
