@@ -2,10 +2,13 @@
 #![feature(unsafe_destructor)]
 
 extern crate libc;
-use std::kinds::marker;
+
+use std::fmt;
 use std::mem;
+use std::ops::{Index, IndexMut};
 use std::os::{MemoryMap,MapOption};
 use std::raw::Slice as RawSlice;
+use std::marker;
 
 use ffi::*;
 
@@ -15,22 +18,37 @@ pub const HEADER_SIZE: u32 = 8;
 pub const NANBOX_SIZE: u32 = 8;
 
 #[repr(packed, C)]
-#[deriving(PartialEq, Show)]
 #[allow(missing_copy_implementations)]
 pub struct NanBox {
     repr: u64,
 }
 
-#[deriving(PartialEq, Show)]
 // reference to NanBox which is guaranteed to contain a pointer to an object
-pub struct ObjRef<'a>(&'a NanBox);
+pub struct ObjRef<'a> {
+    borrow: &'a NanBox,
+}
 
-#[deriving(PartialEq, Show)]
+// reference to NanBox for which we do not guarantee anything
+pub struct RawValue<'a> {
+    borrow: &'a NanBox,
+}
+
 pub enum Value<'a> {
     Nil,
     //Int(i32),
     Float(f64),
-    Obj(ObjRef<'a>)
+    Obj(ObjRef<'a>),
+}
+
+
+impl<'a> fmt::Show for Value<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &Value::Nil           => write!(f, "Nil"),
+            &Value::Float(double) => write!(f, "Float({})", double),
+            &Value::Obj(ref obj)  => write!(f, "Obj(0x{:x})", obj.borrow.repr),
+        }
+    }
 }
 
 impl<'a> Value<'a> {
@@ -105,11 +123,15 @@ impl NanBox {
                 self.repr = invert_non_negative(bits);
                 assert!(self.is_double());
             },
-            Value::Obj(ObjRef(other)) => {
-                self.repr = other.repr;
+            Value::Obj(other) => {
+                self.repr = other.borrow.repr;
                 assert!(self.is_objref());
             }
         }
+    }
+
+    pub fn store_raw(&mut self, raw: RawValue) {
+        self.repr = raw.borrow.repr;
     }
 
     pub fn load(&self) -> Value {
@@ -119,7 +141,7 @@ impl NanBox {
             let bits = invert_non_negative(self.repr);
             Value::Float(unsafe { mem::transmute(bits) })
         } else if self.is_objref() {
-            Value::Obj(ObjRef(self))
+            Value::Obj(ObjRef { borrow: self })
         } else {
             unreachable!()
         }
@@ -127,52 +149,26 @@ impl NanBox {
 }
 
 impl<'a> ObjRef<'a> {
-    fn getfield(&self, idx: u16) -> Value<'a> {
-        // TODO check for size
+    unsafe fn field(&self, idx: u16) -> *mut NanBox {
+        let obj: *mut NanBox = mem::transmute(self.borrow.repr);
+        obj.offset(1 + (idx as int))
+        // TODO size check
+    }
 
-        let ObjRef(nanbox) = *self;
+    pub fn getfield(&self, idx: u16) -> RawValue<'a> {
         unsafe {
-            let obj_header: *const NanBox = mem::transmute(nanbox.repr);
-            let field = obj_header.offset(1 + (idx as int));
-
-            (&*field).load()
+            let field = self.field(idx);
+            RawValue { borrow: field.as_ref().unwrap() }
         }
     }
 
-    fn setfield(&mut self, idx: u16, value: Value) {
-        // TODO check for size
-
-        let ObjRef(nanbox) = *self;
+    pub fn setfield(&mut self, idx: u16, value: Value) {
         unsafe {
-            let obj_header: *mut NanBox = mem::transmute(nanbox.repr);
-            let field = obj_header.offset(1 + (idx as int));
-
+            let field = self.field(idx);
             (&mut *field).store(value);
         }
     }
 }
-
-/*
-    fn alloc_obj(&mut self, ap: mps_ap_t, cljtype: u16, count: u32) {
-
-    }
-
-    fn get_field(&mut self, idx: u16) -> &mut NanBox {
-        unsafe {
-            assert!(self.is_objref());
-            let self_ptr = self as *mut NanBox;
-            let field_ptr: *mut NanBox = self_ptr.offset(1 + (idx as int));
-
-            // RawPtr.as_ref() returns immutable &NanBox, even for *mut NanBox
-            mem::transmute(field_ptr)
-        }
-    }
-
-    fn replace(&mut self, other: &mut NanBox) {
-        self.repr = other.repr;
-    }
-*/
-
 
 pub struct MemoryPoolSystem {
     arena: mps_arena_t,
@@ -183,7 +179,7 @@ pub struct MemoryPoolSystem {
 }
 
 impl MemoryPoolSystem {
-    pub fn new(heapsize: uint) -> MemoryPoolSystem {
+    pub fn new(heapsize: usize) -> MemoryPoolSystem {
         // create arena of given size
         let arena = unsafe {
             let mut arena: mps_arena_t = mem::zeroed();
@@ -250,7 +246,7 @@ pub struct Slots<'a> {
     amc_ap: mps_ap_t,
 
     // base offset for slots array
-    base: uint,
+    base: usize,
 
     // memory mapped slots array
     #[allow(dead_code)]
@@ -266,7 +262,7 @@ pub struct Slots<'a> {
 
 impl<'a> Context<'a> {
 
-    pub fn new(slot_count: uint, mps: &'a MemoryPoolSystem) -> Context<'a> {
+    pub fn new(slot_count: usize, mps: &'a MemoryPoolSystem) -> Context<'a> {
         let thread = unsafe {
             let mut thread = mem::zeroed();
             let res = mps_thread_reg(&mut thread, mps.arena);
@@ -294,7 +290,7 @@ impl<'a> Drop for Context<'a> {
 }
 
 impl<'a> Slots<'a> {
-    fn new(slot_count: uint, mps: &'a MemoryPoolSystem) -> Slots<'a> {
+    fn new(slot_count: usize, mps: &'a MemoryPoolSystem) -> Slots<'a> {
         let mmap = {
             let size = slot_count * mem::size_of::<Slot>();
             let options = [MapOption::MapReadable, MapOption::MapWritable];
@@ -335,7 +331,7 @@ impl<'a> Slots<'a> {
     }
 
     // FIXME: with the IndexSet trait, we can make this nicer
-    pub fn alloc(&mut self, dst: uint, cljtype: &CljType) {
+    pub fn alloc(&mut self, dst: usize, cljtype: &CljType) {
         unsafe {
             let ap = self.amc_ap;
             let dst = &mut self[dst];
@@ -361,16 +357,18 @@ impl<'a> Drop for Slots<'a> {
     }
 }
 
-impl<'a> Index<uint, Slot> for Slots<'a> {
+impl<'a> Index<usize> for Slots<'a> {
+    type Output = Slot;
     #[inline]
-    fn index(&self, index: &uint) -> &Slot {
+    fn index(&self, index: &usize) -> &Slot {
         &self.slice[self.base + *index]
     }
 }
 
-impl<'a> IndexMut<uint, Slot> for Slots<'a> {
+impl<'a> IndexMut<usize> for Slots<'a> {
+    type Output = Slot;
     #[inline]
-    fn index_mut(&mut self, index: &uint) -> &mut Slot {
+    fn index_mut(&mut self, index: &usize) -> &mut Slot {
         &mut self.slice[self.base + *index]
     }
 }
@@ -401,10 +399,12 @@ fn main() {
         obj1.setfield(0, Value::Obj(obj2));
 
         mps.debug_printwalk();
+    }
 
+    {
         // obj1.field1 = slot[0]
+        let mut obj1 = ctx.slot[1].load().obj();
         obj1.setfield(1, ctx.slot[0].load());
-        assert_eq!(obj1.getfield(1).float(), 3.14);
 
         mps.debug_printwalk();
     }

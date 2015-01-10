@@ -14,7 +14,7 @@ fn invoke(cmd: &Command) {
 
 fn main() {
     let out_dir = os::getenv("OUT_DIR").unwrap();
-    let debug = from_str::<bool>(&*os::getenv("DEBUG").unwrap()).unwrap();
+    let debug: bool = os::getenv("DEBUG").unwrap().parse().unwrap();
 
     // MPS itself
     let mut cc = Command::new("clang");
