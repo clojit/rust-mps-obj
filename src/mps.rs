@@ -110,13 +110,15 @@ pub trait ObjType {
     fn id(&self) -> u16;
 }
 
-pub type RootedPtr = mps_addr_t;
+#[repr(packed, C)]
+pub struct RootedPtr(mps_addr_t);
 
 pub fn alloc(dst: &mut RootedPtr, ty: &ObjType) {
     MPS_AMC_AP.with(|mps_amc_ap| unsafe {
         let &AllocPoint(ap) = mps_amc_ap;
+        let RootedPtr(ref mut root) = *dst;
         let size = (MPS_HEADER_SIZE + (ty.count() * MPS_WORD_SIZE)) as u32;
-        let res = rust_mps_alloc_obj(dst, ap, size, ty.id(), OBJ_MPS_TYPE_OBJECT);
+        let res = rust_mps_alloc_obj(root, ap, size, ty.id(), OBJ_MPS_TYPE_OBJECT);
         assert!(res == 0);
     });
 }
@@ -138,7 +140,9 @@ impl RootTable {
 
             // register as root
             let mut root: mps_root_t = ptr::null_mut();
-            let res = rust_mps_root_create_table(&mut root, arena(), base, count as libc::size_t);
+            let res = rust_mps_root_create_table(&mut root, arena(),
+                        base as *mut mps_addr_t,
+                        count as libc::size_t);
             assert!(res == 0);
 
             RootTable { root: root, base: base, count: count }

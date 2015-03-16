@@ -292,7 +292,7 @@ fn main() {
     let ty = CljType { id: 42, count: 3 };
     mps::alloc(&mut rt[0], &ty);
     mps::debug_printwalk();
-    rt[0] = 0 as mps::RootedPtr;
+    rt[0] = unsafe { mem::zeroed() };
     mps::debug_printwalk();
     mps::gc();
     mps::debug_printwalk();
