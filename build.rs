@@ -1,5 +1,3 @@
-#![feature(env)]
-
 extern crate gcc;
 
 use std::env::var;

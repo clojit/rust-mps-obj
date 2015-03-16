@@ -12,7 +12,6 @@ pub type mps_thr_t = *mut mps_thr_s;
 enum mps_pool_s {}
 pub type mps_pool_t = *mut mps_pool_s;
 
-
 enum mps_root_s { }
 pub type mps_root_t = *mut mps_root_s;
 
