@@ -60,6 +60,7 @@ extern {
     pub fn mps_fmt_destroy(fmt: mps_fmt_t);
     pub fn mps_arena_destroy(arena: mps_arena_t);
 
+    pub fn mps_arena_clamp(arena: mps_arena_t);
     pub fn mps_arena_collect(arena: mps_arena_t);
     pub fn mps_arena_release(arena: mps_arena_t);
 }

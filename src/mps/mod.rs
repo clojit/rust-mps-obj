@@ -8,6 +8,8 @@ use std::marker;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Once, ONCE_INIT};
 use std::rt::heap::{allocate, deallocate};
+use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT, Ordering};
+use std::sync::{StaticMutex, MUTEX_INIT};
 use self::ffi::*;
 
 pub mod ffi;
@@ -16,26 +18,26 @@ const MPS_HEAP_SIZE: usize = 32*1024*1024;
 
 pub const MPS_HEADER_SIZE: usize = 8;
 pub const MPS_WORD_SIZE: usize = 8;
-
+/*
 #[repr(packed, C)]
-pub struct Header {
+pub struct Object {
     pub mps_type: u8,
     padding: u8,
     pub obj_type: u16,
     pub size: u32,
 }
 
-impl Header {
+impl Object {
     pub fn len(&self) -> usize {
         self.size as usize / MPS_WORD_SIZE - 1
     }
 
     pub fn offset(&mut self, index: u16) -> *mut NanBox {
         assert!((index as usize) < self.len());
-        let obj: *mut NanBox = unsafe { mem::transmute(self) };
+        let obj: *mut NanBox = self as *mut _;
         unsafe { obj.offset(1 + (index as isize)) }
     }
-}
+}*/
 
 fn arena() -> mps_arena_t {
     static mut arena: mps_arena_t = 0 as mps_arena_t;
@@ -70,19 +72,36 @@ fn amc_pool() -> (mps_pool_t, mps_fmt_t) {
     unsafe { (amc, fmt) }
 }
 
-pub fn gc() {
-    let arena = arena();
-    unsafe {
-        mps_arena_collect(arena);
-        mps_arena_release(arena);
+// atomic to ensure sequential consistency, mutex to avoid races
+static CLAMP_LOCK: StaticMutex = MUTEX_INIT;
+static CLAMP_COUNT: AtomicUsize = ATOMIC_USIZE_INIT;
+
+pub struct Clamp(mps_arena_t);
+
+impl Clamp {
+    pub fn new() -> Self {
+        let arena = arena(); // get arena first, avoids nested locks
+        let lock = CLAMP_LOCK.lock().unwrap();
+        let old_count = CLAMP_COUNT.fetch_add(1, Ordering::SeqCst);
+        if old_count == 0 {
+            // we have the mutex and count was zero, therefore we are first
+            unsafe { mps_arena_clamp(arena); }
+        }
+        drop(lock);
+        Clamp(arena)
     }
 }
 
-pub fn debug_printwalk() {
-    let arena = arena();
-    let (_, fmt) = amc_pool();
-    unsafe {
-        rust_mps_debug_print_reachable(arena, fmt);
+impl Drop for Clamp {
+    fn drop(&mut self) {
+        let Clamp(arena) = *self;
+        let lock = CLAMP_LOCK.lock().unwrap();
+        let old_count = CLAMP_COUNT.fetch_sub(1, Ordering::SeqCst);
+        if old_count == 1 {
+            // count is now zero, thus we can release the arena
+            unsafe { mps_arena_release(arena); }
+        }
+        drop(lock);
     }
 }
 
@@ -127,6 +146,25 @@ impl Drop for AllocPoint {
     }
 }
 
+pub fn gc() {
+    let arena = arena();
+    // we need to clamp in order not to release the arena if others
+    // are currently clamping
+    let clamp = Clamp::new();
+    unsafe {
+        mps_arena_collect(arena);
+    }
+    drop(clamp)
+}
+
+pub fn debug_printwalk() {
+    let arena = arena();
+    let (_, fmt) = amc_pool();
+    unsafe {
+        rust_mps_debug_print_reachable(arena, fmt);
+    }
+}
+
 #[inline]
 fn invert_non_negative(val: u64) -> u64 {
     let mask: u64 = (!val as i64 >> 63) as u64 & !(1 << 63);
@@ -150,7 +188,7 @@ impl NanBox {
     }
 
     #[inline]
-    pub fn is_ptr(&self) -> bool {
+    pub fn is_obj(&self) -> bool {
         !self.is_nil() && (self.tag() == TAG_POINTER_LO || self.tag() == TAG_POINTER_HI)
     }
 
@@ -167,22 +205,25 @@ impl NanBox {
     #[inline]
     pub fn store_nil(&mut self) {
         self.val = 0;
-        assert!(self.is_nil())
     }
 
     #[inline]
     pub fn store_double(&mut self, double: f64) {
         let bits: u64 = unsafe { mem::transmute(double) };
         self.val = invert_non_negative(bits);
-        debug_assert!(self.is_double());
     }
 
     #[inline]
-    pub fn load_double(&self) -> f64 {
-        assert!(self.is_double());
-        let bits = invert_non_negative(self.val);
-        unsafe { mem::transmute(bits) }
+    pub fn load_double(&self) -> Option<f64> {
+        if self.is_double() {
+            let bits = invert_non_negative(self.val);
+            Some(unsafe { mem::transmute(bits) })
+        } else {
+            None
+        }
     }
+
+    // TODO: maybe closure for objpointer?
 
     pub fn copy_from(&mut self, other: &NanBox) {
         use std::intrinsics::volatile_copy_memory;
@@ -195,11 +236,6 @@ impl NanBox {
                 if load(&self.val) == load(&other.val) { break }
             }
         }
-    }
-
-    pub unsafe fn header(&self) -> &Header {
-        debug_assert!(self.is_ptr());
-        unsafe { mem::transmute(self.val) }
     }
 }
 

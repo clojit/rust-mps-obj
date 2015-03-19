@@ -20,6 +20,9 @@ mod mps;
 //      1. *(ptr + idx)
 //      2. do check if ptr is still valid
 
+// Clamping:
+//   -> gc clamps, only releases if nobody clamping
+//   -> normal clamps, only release if nobody else clamping
 
 
 pub struct CljType {
@@ -79,10 +82,24 @@ impl ObjRef {
         })
     }
 
-    fn header(&self) -> &mps::Header {
+    /*pub fn header(&self) -> &mps::Header {
         let nanbox: &NanBox = self;
         unsafe { nanbox.header() }
+    }*/
+
+   /* pub fn getfield(&self, index: u16) -> &NanBox {
+        let field = self.offset(index);
+        unsafe {
+            field.as_ref().unwrap()
+        }
     }
+
+    pub fn setfield(&self, index: u16, value: &Value) {
+        let field = self.offset(index);
+        unsafe {
+            field.as_mut().unwrap().store(value);
+        }
+    }*/
 }
 
 impl Drop for ObjRef {
@@ -140,39 +157,14 @@ impl Slot for mps::NanBox {
         if self.is_nil() {
             Value::Nil
         } else if self.is_double() {
-            Value::Float(self.load_double())
-        } else if self.is_ptr() {
+            Value::Float(self.load_double().unwrap())
+        } else if self.is_obj() {
             Value::Obj(ObjRef::new(self))
         } else {
             unreachable!()
         }
     }
 }
-
-/*
-
-impl<'a> ObjRef<'a> {
-    unsafe fn field(&self, idx: u16) -> *mut NanBox {
-        let obj: *mut NanBox = mem::transmute(self.borrow.repr);
-        obj.offset(1 + (idx as isize))
-        // TODO size check
-    }
-
-    pub fn getfield(&self, idx: u16) -> RawValue<'a> {
-        unsafe {
-            let field = self.field(idx);
-            RawValue { borrow: field.as_ref().unwrap() }
-        }
-    }
-
-    pub fn setfield(&mut self, idx: u16, value: Value) {
-        unsafe {
-            let field = self.field(idx);
-            (&mut *field).store(value);
-        }
-    }
-}
-*/
 
 fn main() {
     let mut slot: mps::RootTable = mps::RootTable::new(4096);
@@ -182,11 +174,14 @@ fn main() {
     mps::alloc(&mut slot[0], &ty);
     mps::debug_printwalk();
     let val = slot[0].load(); // copy object to rust stack
-    if let Value::Obj(obj) = val {
+    /*if let Value::Obj(mut obj) = val {
         println!("val obj len: {}", obj.header().len());
-    }
-    slot[0].store(&Value::Nil);
+        obj.setfield(1, &Value::Float(3.14));
+    }*/
+    //slot[0].store(&Value::Nil);
     mps::debug_printwalk();
+    let clamp = mps::Clamp::new();
     mps::gc();
+    drop(clamp);
     mps::debug_printwalk();
 }
