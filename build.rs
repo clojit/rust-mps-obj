@@ -12,7 +12,7 @@ fn main() {
 
     gcc::Config::new()
                 .file("mps-kit-1.114.0/code/mps.c")
-                .file("src/rust-mps.c")
+                .file("src/mps/rust-mps.c")
                 .define(variety, None)
                 .flag("-std=c11")
                 .include("mps-kit-1.114.0/code")

@@ -8,17 +8,34 @@ use std::marker;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Once, ONCE_INIT};
 use std::rt::heap::{allocate, deallocate};
-use std::collections::{BitVec};
-use std::cell::RefCell;
-
 use self::ffi::*;
 
 pub mod ffi;
 
 const MPS_HEAP_SIZE: usize = 32*1024*1024;
 
-const MPS_HEADER_SIZE: usize = 8;
-const MPS_WORD_SIZE: usize = 8;
+pub const MPS_HEADER_SIZE: usize = 8;
+pub const MPS_WORD_SIZE: usize = 8;
+
+#[repr(packed, C)]
+pub struct Header {
+    pub mps_type: u8,
+    padding: u8,
+    pub obj_type: u16,
+    pub size: u32,
+}
+
+impl Header {
+    pub fn len(&self) -> usize {
+        self.size as usize / MPS_WORD_SIZE - 1
+    }
+
+    pub fn offset(&mut self, index: u16) -> *mut NanBox {
+        assert!((index as usize) < self.len());
+        let obj: *mut NanBox = unsafe { mem::transmute(self) };
+        unsafe { obj.offset(1 + (index as isize)) }
+    }
+}
 
 fn arena() -> mps_arena_t {
     static mut arena: mps_arena_t = 0 as mps_arena_t;
@@ -110,6 +127,82 @@ impl Drop for AllocPoint {
     }
 }
 
+#[inline]
+fn invert_non_negative(val: u64) -> u64 {
+    let mask: u64 = (!val as i64 >> 63) as u64 & !(1 << 63);
+    val ^ mask
+}
+
+const TAG_POINTER_HI: u16 = 0xFFFF;
+const TAG_DOUBLE_MAX: u16 = 0xFFF8;
+const TAG_DOUBLE_MIN: u16 = 0x0007;
+const TAG_POINTER_LO: u16 = 0x0000;
+
+#[repr(packed, C)]
+pub struct NanBox {
+    val: u64,
+}
+
+impl NanBox {
+    #[inline]
+    pub fn tag(&self) -> u16 {
+        (self.val >> 48 & 0xFFFF) as u16
+    }
+
+    #[inline]
+    pub fn is_ptr(&self) -> bool {
+        !self.is_nil() && (self.tag() == TAG_POINTER_LO || self.tag() == TAG_POINTER_HI)
+    }
+
+    #[inline]
+    pub fn is_nil(&self) -> bool {
+        self.val == 0
+    }
+
+    #[inline]
+    pub fn is_double(&self) -> bool {
+        self.tag() >= TAG_DOUBLE_MIN && self.tag() <= TAG_DOUBLE_MAX
+    }
+
+    #[inline]
+    pub fn store_nil(&mut self) {
+        self.val = 0;
+        assert!(self.is_nil())
+    }
+
+    #[inline]
+    pub fn store_double(&mut self, double: f64) {
+        let bits: u64 = unsafe { mem::transmute(double) };
+        self.val = invert_non_negative(bits);
+        debug_assert!(self.is_double());
+    }
+
+    #[inline]
+    pub fn load_double(&self) -> f64 {
+        assert!(self.is_double());
+        let bits = invert_non_negative(self.val);
+        unsafe { mem::transmute(bits) }
+    }
+
+    pub fn copy_from(&mut self, other: &NanBox) {
+        use std::intrinsics::volatile_copy_memory;
+        use std::intrinsics::volatile_load as load;
+
+        unsafe {
+            loop {
+                // FIXME: might need memory barrier
+                volatile_copy_memory(self, other, 1);
+                if load(&self.val) == load(&other.val) { break }
+            }
+        }
+    }
+
+    pub unsafe fn header(&self) -> &Header {
+        debug_assert!(self.is_ptr());
+        unsafe { mem::transmute(self.val) }
+    }
+}
+
 pub trait ObjType {
     fn count(&self) -> usize;
     fn id(&self) -> u16;
@@ -119,7 +212,7 @@ pub fn alloc(dst: &mut NanBox, ty: &ObjType) {
     MPS_AMC_AP.with(|mps_amc_ap| unsafe {
         let &AllocPoint(ap) = mps_amc_ap;
         let size = (MPS_HEADER_SIZE + (ty.count() * MPS_WORD_SIZE)) as u32;
-        let root: &mut mps_addr_t = mem::transmute(&mut dst.val);
+        let root: &mut mps_addr_t = mem::transmute(dst);
         let res = rust_mps_alloc_obj(root, ap, size, ty.id(), OBJ_MPS_TYPE_OBJECT);
         assert!(res == 0);
     });
@@ -173,167 +266,6 @@ impl Drop for RootTable {
             let align = mem::align_of::<NanBox>();
             mps_root_destroy(self.root);
             deallocate(self.base as *mut u8, size, align);
-        }
-    }
-}
-
-const SCRATCH_TABLE_SIZE: usize = 128;
-
-struct ScratchTable {
-    table: RootTable,
-    free: BitVec,
-}
-
-impl ScratchTable {
-    fn alloc(&mut self) -> usize {
-        let index = self.free.iter()
-                        .position(|isfree| isfree)
-                        .expect("Out of scratch registers!");
-        self.free.set(index, false);
-
-        index
-    }
-
-    fn free(&mut self, index: usize) {
-        self.free.set(index, false);
-    }
-}
-
-thread_local!{
-    static SCRATCH: RefCell<ScratchTable> = RefCell::new(ScratchTable {
-        table: RootTable::new(SCRATCH_TABLE_SIZE),
-        free: BitVec::from_elem(SCRATCH_TABLE_SIZE, true),
-    })
-}
-
-
-#[repr(packed, C)]
-pub struct ObjRef {
-    ptr: *mut NanBox,
-}
-
-impl ObjRef {
-    pub fn new(from: &NanBox) -> Self {
-        SCRATCH.with(|cell| {
-            let mut scratch = cell.borrow_mut();
-            let index = scratch.alloc();
-
-            scratch.table[index].copy_from(from);
-
-            ObjRef { ptr: &mut scratch.table[index] }
-        })
-    }
-}
-
-impl Drop for ObjRef {
-    fn drop(&mut self) {
-        SCRATCH.with(|cell| {
-            let mut scratch = cell.borrow_mut();
-            let base: *mut NanBox = scratch.table.as_mut_ptr();
-            scratch.free(self.ptr as usize - base as usize);
-        })
-    }
-}
-
-impl Deref for ObjRef {
-    type Target = NanBox;
-
-    fn deref(&self) -> &NanBox {
-        unsafe { mem::transmute(self) }
-    }
-}
-
-impl DerefMut for ObjRef {
-    fn deref_mut(&mut self) -> &mut NanBox {
-        unsafe { mem::transmute(self) }
-    }
-}
-
-pub enum Value {
-    Nil,
-    //Int(i32),
-    Float(f64),
-    Obj(ObjRef),
-}
-
-#[inline]
-fn invert_non_negative(val: u64) -> u64 {
-    let mask: u64 = (!val as i64 >> 63) as u64 & !(1 << 63);
-    val ^ mask
-}
-
-const TAG_POINTER_HI: u16 = 0xFFFF;
-const TAG_DOUBLE_MAX: u16 = 0xFFF8;
-const TAG_DOUBLE_MIN: u16 = 0x0007;
-const TAG_POINTER_LO: u16 = 0x0000;
-
-#[repr(packed, C)]
-pub struct NanBox {
-    val: u64,
-}
-
-impl NanBox {
-    #[inline]
-    pub fn tag(&self) -> u16 {
-        (self.val >> 48 & 0xFFFF) as u16
-    }
-
-    #[inline]
-    pub fn is_ptr(&self) -> bool {
-        !self.is_nil() && (self.tag() == TAG_POINTER_LO || self.tag() == TAG_POINTER_HI)
-    }
-
-    #[inline]
-    pub fn is_nil(&self) -> bool {
-        self.val == 0
-    }
-
-    #[inline]
-    pub fn is_double(&self) -> bool {
-        self.tag() >= TAG_DOUBLE_MIN && self.tag() <= TAG_DOUBLE_MAX
-    }
-
-    pub fn copy_from(&mut self, other: &NanBox) {
-        use std::intrinsics::volatile_copy_memory;
-        use std::intrinsics::volatile_load as load;
-
-        unsafe {
-            loop {
-                // FIXME: might need memory barrier
-                volatile_copy_memory(self, other, 1);
-                if load(&self.val) == load(&other.val) { break }
-            }
-        }
-    }
-
-    pub fn store(&mut self, value: Value) {
-        match value {
-            Value::Nil => {
-                self.val = 0;
-                assert!(self.is_nil())
-            },
-            Value::Float(double) => {
-                let bits: u64 = unsafe { mem::transmute(double) };
-                self.val = invert_non_negative(bits);
-                assert!(self.is_double());
-            },
-            Value::Obj(ref other) => {
-                self.copy_from(other);
-                assert!(self.is_ptr());
-            }
-        }
-    }
-
-    pub fn load(&self) -> Value {
-        if self.is_nil() {
-            Value::Nil
-        } else if self.is_double() {
-            let bits = invert_non_negative(self.val);
-            Value::Float(unsafe { mem::transmute(bits) })
-        } else if self.is_ptr() {
-            Value::Obj(ObjRef::new(self))
-        } else {
-            unreachable!()
         }
     }
 }
