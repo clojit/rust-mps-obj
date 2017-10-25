@@ -1,9 +1,0 @@
-#!/usr/bin/perl -w
-# $Id: //info.ravenbrook.com/project/mps/version/1.114/test/test/script/commands/options#1 $
-#
-# display all the options ever
-#
-
-&displayalloptions;
-
-

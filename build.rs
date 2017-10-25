@@ -1,4 +1,4 @@
-extern crate gcc;
+extern crate cc;
 
 use std::env::var;
 
@@ -10,11 +10,11 @@ fn main() {
         "CONFIG_VAR_HOT"
     };
 
-    gcc::Config::new()
-                .file("mps-kit-1.114.0/code/mps.c")
-                .file("src/mps/rust-mps.c")
-                .define(variety, None)
-                .flag("-std=c11")
-                .include("mps-kit-1.114.0/code")
-                .compile("librustmps.a");
+    cc::Build::new()
+        .file("mps-kit/code/mps.c")
+        .file("src/ffi/glue.c")
+        .define(variety, None)
+        .flag("-std=c11")
+        .include("mps-kit/code")
+        .compile("librustmps.a");
 }
