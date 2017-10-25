@@ -15,6 +15,7 @@ fn main() {
         .file("src/ffi/glue.c")
         .define(variety, None)
         .flag("-std=c11")
+        .flag_if_supported("-Wimplicit-fallthrough=2")
         .include("mps-kit/code")
         .compile("librustmps.a");
 }
