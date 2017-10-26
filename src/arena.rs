@@ -7,7 +7,7 @@ use ffi::{mps_arena_committed, mps_arena_destroy, mps_arena_reserved, mps_arena_
 
 #[derive(Clone)]
 pub struct Arena {
-    inner: Arc<RawArena>,
+    ptr: Arc<RawArena>,
 }
 
 impl Arena {
@@ -17,17 +17,21 @@ impl Arena {
 
         Error::result(res).map(|_| {
             Arena {
-                inner: Arc::new(RawArena { arena }),
+                ptr: Arc::new(RawArena { arena }),
             }
         })
     }
 
-    fn commited(&self) -> usize {
-        unsafe { mps_arena_committed(self.inner.arena) }
+    pub fn as_raw_ptr(&self) -> mps_arena_t {
+        self.ptr.arena
     }
 
-    fn reserved(&self) -> usize {
-        unsafe { mps_arena_reserved(self.inner.arena) }
+    pub fn commited(&self) -> usize {
+        unsafe { mps_arena_committed(self.ptr.arena) }
+    }
+
+    pub fn reserved(&self) -> usize {
+        unsafe { mps_arena_reserved(self.ptr.arena) }
     }
 }
 
