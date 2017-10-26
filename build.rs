@@ -1,12 +1,12 @@
-extern crate cc;
 extern crate bindgen;
+extern crate cc;
 
 use std::env;
 use std::path::PathBuf;
 
 fn main() {
     // use cool variety if debug mode enabled
-    let variety = if env::var("DEBUG").map(|val| val=="true").unwrap_or(false) {
+    let variety = if env::var("DEBUG").map(|val| val == "true").unwrap_or(false) {
         "CONFIG_VAR_COOL"
     } else {
         "CONFIG_VAR_HOT"

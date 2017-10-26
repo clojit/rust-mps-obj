@@ -2,8 +2,8 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::result;
 
-use ffi::{mps_res_t, MPS_RES_OK, MPS_RES_IO, MPS_RES_LIMIT, MPS_RES_MEMORY,
-          MPS_RES_RESOURCE, MPS_RES_UNIMPL, MPS_RES_COMMIT_LIMIT, MPS_RES_PARAM};
+use ffi::{mps_res_t, MPS_RES_COMMIT_LIMIT, MPS_RES_IO, MPS_RES_LIMIT, MPS_RES_MEMORY, MPS_RES_OK,
+          MPS_RES_PARAM, MPS_RES_RESOURCE, MPS_RES_UNIMPL};
 use self::Error::*;
 
 pub type Result<T> = result::Result<T, Error>;
@@ -23,15 +23,15 @@ pub enum Error {
 impl Error {
     pub fn result(res: mps_res_t) -> Result<()> {
         match res as u32 {
-            r if r == MPS_RES_OK as u32           => Ok(()),
+            r if r == MPS_RES_OK as u32 => Ok(()),
             r if r == MPS_RES_COMMIT_LIMIT as u32 => Err(CommitLimit),
-            r if r == MPS_RES_IO as u32           => Err(InputOutput),
-            r if r == MPS_RES_MEMORY as u32       => Err(InsufficientMemory),
-            r if r == MPS_RES_RESOURCE as u32     => Err(InsufficientResources),
-            r if r == MPS_RES_LIMIT as u32        => Err(InternalLimit),
-            r if r == MPS_RES_PARAM as u32        => Err(InvalidParam),
-            r if r == MPS_RES_UNIMPL as u32       => Err(Unimplemented),
-            _ => Err(Other)
+            r if r == MPS_RES_IO as u32 => Err(InputOutput),
+            r if r == MPS_RES_MEMORY as u32 => Err(InsufficientMemory),
+            r if r == MPS_RES_RESOURCE as u32 => Err(InsufficientResources),
+            r if r == MPS_RES_LIMIT as u32 => Err(InternalLimit),
+            r if r == MPS_RES_PARAM as u32 => Err(InvalidParam),
+            r if r == MPS_RES_UNIMPL as u32 => Err(Unimplemented),
+            _ => Err(Other),
         }
     }
 }
