@@ -1,6 +1,6 @@
 mod ffi;
-mod arena;
-mod errors;
+pub mod arena;
+pub mod errors;
 
 #[cfg(test)]
 mod tests {

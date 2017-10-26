@@ -22,7 +22,7 @@ impl Arena {
         })
     }
 
-    pub fn as_raw_ptr(&self) -> mps_arena_t {
+    pub(crate) fn as_raw_ptr(&self) -> mps_arena_t {
         self.ptr.arena
     }
 
