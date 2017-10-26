@@ -23,6 +23,8 @@ fn main() {
 
     let bindings = bindgen::Builder::default()
         .header("mps-kit/code/mps.h")
+        .header("src/ffi/stub.c")
+        .clang_arg("-Imps-kit/code")
         .generate()
         .expect("Unable to generate bindings");
 

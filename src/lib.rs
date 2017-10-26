@@ -1,4 +1,5 @@
 mod ffi;
+mod arena;
 mod errors;
 
 #[cfg(test)]
