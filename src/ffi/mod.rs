@@ -5,7 +5,7 @@
 
 macro_rules! mps_args {
     ($($key:ident : $val:expr),* $(,)*) => {
-        [$(mps_arg_s!($key, $val),)* mps_arg_s!(MPS_KEY_ARGS_END)].as_mut_ptr()
+        &mut [$(mps_arg_s!($key, $val),)* mps_arg_s!(MPS_KEY_ARGS_END)][0]
     }
 }
 
