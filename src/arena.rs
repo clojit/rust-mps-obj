@@ -3,35 +3,47 @@ use std::ptr;
 
 use errors::{Error, Result};
 use ffi::{mps_arena_committed, mps_arena_destroy, mps_arena_reserved, mps_arena_t,
-          rust_mps_create_vm_area};
+          mps_arena_create_k, mps_arena_class_vm};
+
+pub trait Arena {
+    unsafe fn as_raw_ptr(&self) -> mps_arena_t;
+
+    fn commited(&self) -> usize {
+        unsafe { mps_arena_committed(self.as_raw_ptr()) }
+    }
+
+    fn reserved(&self) -> usize {
+        unsafe { mps_arena_reserved(self.as_raw_ptr()) }
+    }
+}
 
 #[derive(Clone)]
-pub struct Arena {
+pub struct VmArena {
     ptr: Arc<RawArena>,
 }
 
-impl Arena {
+impl VmArena {
     pub fn with_capacity(capacity: usize) -> Result<Self> {
         let mut arena: mps_arena_t = ptr::null_mut();
-        let res = unsafe { rust_mps_create_vm_area(&mut arena, capacity) };
+        let args = mps_args! {
+             MPS_KEY_ARENA_SIZE: capacity,
+        };
+
+        let res = unsafe {
+            mps_arena_create_k(&mut arena, mps_arena_class_vm(), args)
+        };
 
         Error::result(res).map(|_| {
-            Arena {
+            VmArena {
                 ptr: Arc::new(RawArena { arena }),
             }
         })
     }
+}
 
-    pub(crate) fn as_raw_ptr(&self) -> mps_arena_t {
+impl Arena for VmArena {
+    unsafe fn as_raw_ptr(&self) -> mps_arena_t {
         self.ptr.arena
-    }
-
-    pub fn commited(&self) -> usize {
-        unsafe { mps_arena_committed(self.ptr.arena) }
-    }
-
-    pub fn reserved(&self) -> usize {
-        unsafe { mps_arena_reserved(self.ptr.arena) }
     }
 }
 
@@ -53,12 +65,12 @@ mod tests {
 
     #[test]
     fn arena_create_and_drop() {
-        let _ = Arena::with_capacity(ARENA_TEST_SIZE).unwrap();
+        let _ = VmArena::with_capacity(ARENA_TEST_SIZE).unwrap();
     }
 
     #[test]
     fn arena_commited() {
-        let arena = Arena::with_capacity(ARENA_TEST_SIZE).unwrap();
+        let arena = VmArena::with_capacity(ARENA_TEST_SIZE).unwrap();
         assert!(arena.reserved() > arena.commited());
     }
 }
