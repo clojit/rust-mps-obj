@@ -62,7 +62,6 @@ fn main() {
 
     let bindings = bindgen::Builder::default()
         .header(mps_h)
-        .header("src/ffi/stub.c")
         .raw_line(mps_arg_macro)
         .clang_arg("-Imps-kit/code")
         .generate()
