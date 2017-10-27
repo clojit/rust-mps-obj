@@ -61,7 +61,8 @@ fn main() {
         .expect("failed to generate args macro");
 
     let bindings = bindgen::Builder::default()
-        .header(mps_h)
+        .header("mps-kit/code/mps.h")
+        .header("mps-kit/code/mpsavm.h")
         .raw_line(mps_arg_macro)
         .clang_arg("-Imps-kit/code")
         .generate()
