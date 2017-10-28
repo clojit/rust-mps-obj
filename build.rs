@@ -1,6 +1,6 @@
-extern crate regex;
 extern crate bindgen;
 extern crate cc;
+extern crate regex;
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -20,20 +20,28 @@ fn generate_mps_args<P: AsRef<Path>>(header: P) -> Result<String, Box<Error>> {
     for line in source_code.lines() {
         let l = line?;
         if let Some(c) = re.captures(&l) {
-            writeln!(&mut out, r"(MPS_KEY_{0}, $value:expr) => {{ unsafe {{
+            writeln!(
+                &mut out,
+                r"(MPS_KEY_{0}, $value:expr) => {{ unsafe {{
                 let mut _arg: $crate::ffi::mps_arg_s = ::std::mem::zeroed();
                 _arg.key = &$crate::ffi::_mps_key_{0};
                 _arg.val.{1} = $value;
                 _arg
-            }} }};", &c["name"], &c["field"])?;
+            }} }};",
+                &c["name"],
+                &c["field"]
+            )?;
         }
     }
 
-    writeln!(&mut out, r"(MPS_KEY_ARGS_END) => {{ unsafe {{
+    writeln!(
+        &mut out,
+        r"(MPS_KEY_ARGS_END) => {{ unsafe {{
         let mut _arg: $crate::ffi::mps_arg_s = ::std::mem::zeroed();
         _arg.key = &$crate::ffi::_mps_key_ARGS_END;
         _arg
-    }} }};")?;
+    }} }};"
+    )?;
 
     writeln!(&mut out, "}}")?;
 
@@ -57,13 +65,13 @@ fn main() {
         .compile("libmps.a");
 
     let mps_h = "mps-kit/code/mps.h";
-    let mps_arg_macro = generate_mps_args(mps_h)
-        .expect("failed to generate args macro");
+    let mps_arg_macro = generate_mps_args(mps_h).expect("failed to generate args macro");
 
     let bindings = bindgen::Builder::default()
         .header("mps-kit/code/mps.h")
         .header("mps-kit/code/mpsavm.h")
         .raw_line(mps_arg_macro)
+        .rustfmt_bindings(true)
         .clang_arg("-Imps-kit/code")
         .generate()
         .expect("Unable to generate bindings");

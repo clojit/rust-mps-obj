@@ -2,48 +2,61 @@ use std::sync::Arc;
 use std::ptr;
 
 use errors::{Error, Result};
-use ffi::{mps_arena_committed, mps_arena_destroy, mps_arena_reserved, mps_arena_t,
-          mps_arena_create_k, mps_arena_class_vm};
+use ffi::{mps_arena_class_vm, mps_arena_committed, mps_arena_create_k, mps_arena_destroy,
+          mps_arena_reserved, mps_arena_t};
 
-pub trait Arena {
-    unsafe fn as_raw_ptr(&self) -> mps_arena_t;
+#[derive(Clone)]
+pub struct Arena {
+    ptr: Arc<RawArena>,
+}
 
-    fn commited(&self) -> usize {
-        unsafe { mps_arena_committed(self.as_raw_ptr()) }
+impl Arena {
+    pub unsafe fn from_raw(arena: mps_arena_t) -> Self {
+        Arena {
+            ptr: Arc::new(RawArena { arena }),
+        }
     }
 
-    fn reserved(&self) -> usize {
-        unsafe { mps_arena_reserved(self.as_raw_ptr()) }
+    pub unsafe fn as_raw_ptr(&self) -> mps_arena_t {
+        self.ptr.arena
+    }
+
+    pub fn commited(&self) -> usize {
+        unsafe { mps_arena_committed(self.ptr.arena) }
+    }
+
+    pub fn reserved(&self) -> usize {
+        unsafe { mps_arena_reserved(self.ptr.arena) }
     }
 }
 
 #[derive(Clone)]
 pub struct VmArena {
-    ptr: Arc<RawArena>,
+    arena: Arena,
 }
 
 impl VmArena {
     pub fn with_capacity(capacity: usize) -> Result<Self> {
-        let mut arena: mps_arena_t = ptr::null_mut();
         let args = mps_args! {
              MPS_KEY_ARENA_SIZE: capacity,
         };
 
-        let res = unsafe {
-            mps_arena_create_k(&mut arena, mps_arena_class_vm(), args)
-        };
+        unsafe {
+            let mut arena: mps_arena_t = ptr::null_mut();
+            let res = mps_arena_create_k(&mut arena, mps_arena_class_vm(), args);
 
-        Error::result(res).map(|_| {
-            VmArena {
-                ptr: Arc::new(RawArena { arena }),
-            }
-        })
+            Error::result(res).map(|_| {
+                VmArena {
+                    arena: Arena::from_raw(arena),
+                }
+            })
+        }
     }
 }
 
-impl Arena for VmArena {
-    unsafe fn as_raw_ptr(&self) -> mps_arena_t {
-        self.ptr.arena
+impl AsRef<Arena> for VmArena {
+    fn as_ref(&self) -> &Arena {
+        &self.arena
     }
 }
 

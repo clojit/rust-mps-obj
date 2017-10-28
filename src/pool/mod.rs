@@ -1,5 +1,5 @@
 use errors::{Error, Result};
-use ffi::{mps_pool_t, mps_pool_destroy, mps_pool_total_size, mps_pool_free_size};
+use ffi::{mps_pool_destroy, mps_pool_free_size, mps_pool_t, mps_pool_total_size};
 
 pub trait Pool {
     unsafe fn as_raw_ptr(&self) -> mps_pool_t;
