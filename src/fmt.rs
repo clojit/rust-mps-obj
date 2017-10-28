@@ -44,17 +44,17 @@ pub struct AreaFormat {
     fmt: Format,
 }
 
-pub trait ReferenceFormat {
+pub trait ReferenceTag {
     const MASK: u64;
     const PATTERN: u64;
 }
 
-unsafe extern "C" fn obj_scan_tagged<R: ReferenceFormat>(
+unsafe extern "C" fn obj_scan_tagged<R: ReferenceTag>(
     ss: mps_ss_t,
     base: mps_addr_t,
     limit: mps_addr_t,
 ) -> mps_res_t {
-    // This is the place where the magic happens, this relies on associated generics and
+    // This is the place where the magic happens, this relies on associated consts and
     // rvalue static promtion to essentially create a stateless scan function for
     // each used reference format.
     let scan_tag: &'static mps_scan_tag_s = &mps_scan_tag_s {
@@ -113,7 +113,7 @@ unsafe extern "C" fn obj_pad(base: mps_addr_t, length: usize) {
 }
 
 impl AreaFormat {
-    pub fn tagged<R: ReferenceFormat, A: AsRef<Arena>>(arena: A) -> Result<Self> {
+    pub fn tagged<R: ReferenceTag, A: AsRef<Arena>>(arena: A) -> Result<Self> {
         let arena = arena.as_ref().clone();
         let args = mps_args! {
             MPS_KEY_FMT_SCAN: Some(obj_scan_tagged::<R>),
