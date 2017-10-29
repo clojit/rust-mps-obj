@@ -1,26 +1,54 @@
-use std::sync::Arc;
 use std::os::raw;
 use std::ptr;
 
-use ffi::*;
 use errors::{Error, Result};
-use arena::Arena;
+use fmt::{Format, FormatRef, RawFormat};
+use arena::{Arena, ArenaRef};
 
-pub struct Format {
-    _arena: Arena,
-    ptr: Arc<RawFormat>,
+use ffi::*;
+
+/// Vector of words
+pub struct AreaFormat {
+    fmt: FormatRef,
 }
 
-impl Format {
-    pub unsafe fn from_raw(arena: Arena, fmt: mps_fmt_t) -> Self {
-        Format {
-            _arena: arena,
-            ptr: Arc::new(RawFormat { fmt }),
-        }
-    }
+pub trait ReferenceTag {
+    const MASK: u64;
+    const PATTERN: u64;
+}
 
-    pub unsafe fn as_raw_ptr(&self) -> mps_fmt_t {
-        self.ptr.fmt
+impl AreaFormat {
+    pub fn tagged<R: ReferenceTag, A: Into<ArenaRef>>(arena: A) -> Result<Self> {
+        let arena = arena.into();
+        let args = mps_args! {
+            MPS_KEY_FMT_SCAN: Some(obj_scan_tagged::<R>),
+            MPS_KEY_FMT_SKIP: Some(obj_skip),
+            MPS_KEY_FMT_FWD: Some(obj_fwd),
+            MPS_KEY_FMT_ISFWD: Some(obj_isfwd),
+            MPS_KEY_FMT_PAD: Some(obj_pad),
+        };
+
+        let format = unsafe {
+            let mut fmt: mps_fmt_t = ptr::null_mut();
+            let res = mps_fmt_create_k(&mut fmt, arena.as_raw(), args);
+            Error::result(res).map(|_| RawFormat { fmt })
+        }?;
+
+        Ok(AreaFormat {
+            fmt: FormatRef::new(arena, format),
+        })
+    }
+}
+
+impl Format for AreaFormat {
+    fn as_raw(&self) -> mps_fmt_t {
+        self.fmt.as_raw()
+    }
+}
+
+impl Into<FormatRef> for AreaFormat {
+    fn into(self) -> FormatRef {
+        self.fmt
     }
 }
 
@@ -37,16 +65,6 @@ struct Header {
     _reserved: u8,
     class: u16,
     length: u32,
-}
-
-/// Vector of words
-pub struct AreaFormat {
-    fmt: Format,
-}
-
-pub trait ReferenceTag {
-    const MASK: u64;
-    const PATTERN: u64;
 }
 
 unsafe extern "C" fn obj_scan_tagged<R: ReferenceTag>(
@@ -110,43 +128,4 @@ unsafe extern "C" fn obj_pad(base: mps_addr_t, length: usize) {
     let obj = base as *mut Header;
     (*obj).content = Content::Padding;
     (*obj).length = length as u32
-}
-
-impl AreaFormat {
-    pub fn tagged<R: ReferenceTag, A: AsRef<Arena>>(arena: A) -> Result<Self> {
-        let arena = arena.as_ref().clone();
-        let args = mps_args! {
-            MPS_KEY_FMT_SCAN: Some(obj_scan_tagged::<R>),
-            MPS_KEY_FMT_SKIP: Some(obj_skip),
-            MPS_KEY_FMT_FWD: Some(obj_fwd),
-            MPS_KEY_FMT_ISFWD: Some(obj_isfwd),
-            MPS_KEY_FMT_PAD: Some(obj_pad),
-        };
-
-        let format = unsafe {
-            let mut format: mps_fmt_t = ptr::null_mut();
-            let res = mps_fmt_create_k(&mut format, arena.as_raw_ptr(), args);
-            Error::result(res).map(|_| Format::from_raw(arena, format))
-        }?;
-
-        Ok(AreaFormat { fmt: format })
-    }
-}
-
-impl AsRef<Format> for AreaFormat {
-    fn as_ref(&self) -> &Format {
-        &self.fmt
-    }
-}
-
-struct RawFormat {
-    fmt: mps_fmt_t,
-}
-
-impl Drop for RawFormat {
-    fn drop(&mut self) {
-        unsafe {
-            mps_fmt_destroy(self.fmt);
-        }
-    }
 }

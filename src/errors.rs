@@ -20,32 +20,18 @@ pub enum Error {
     Other,
 }
 
-macro_rules! match_mps_res_t {
-    (match $res:ident {
-        $( $c:ident => $result:expr),+ ,
-        _ => $fallback:expr,
-    }) => {
-        match $res as u32 {
-            $( r if r == $c as u32 => $result, )+
-            _ => $fallback
-        }
-    }
-}
-
 impl Error {
     pub fn result(res: mps_res_t) -> Result<()> {
-        match_mps_res_t! {
-            match res {
-                MPS_RES_OK => Ok(()),
-                MPS_RES_COMMIT_LIMIT => Err(CommitLimit),
-                MPS_RES_IO => Err(InputOutput),
-                MPS_RES_MEMORY => Err(InsufficientMemory),
-                MPS_RES_RESOURCE => Err(InsufficientResources),
-                MPS_RES_LIMIT => Err(InternalLimit),
-                MPS_RES_PARAM => Err(InvalidParam),
-                MPS_RES_UNIMPL => Err(Unimplemented),
-                _ => Err(Other),
-            }
+        match res as u32 {
+            MPS_RES_OK => Ok(()),
+            MPS_RES_COMMIT_LIMIT => Err(CommitLimit),
+            MPS_RES_IO => Err(InputOutput),
+            MPS_RES_MEMORY => Err(InsufficientMemory),
+            MPS_RES_RESOURCE => Err(InsufficientResources),
+            MPS_RES_LIMIT => Err(InternalLimit),
+            MPS_RES_PARAM => Err(InvalidParam),
+            MPS_RES_UNIMPL => Err(Unimplemented),
+            _ => Err(Other),
         }
     }
 }

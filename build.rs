@@ -71,7 +71,6 @@ fn main() {
         .header("mps-kit/code/mps.h")
         .header("mps-kit/code/mpsavm.h")
         .raw_line(mps_arg_macro)
-        .rustfmt_bindings(true)
         .clang_arg("-Imps-kit/code")
         .generate()
         .expect("Unable to generate bindings");

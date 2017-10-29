@@ -5,34 +5,39 @@ use errors::{Error, Result};
 use ffi::{mps_arena_class_vm, mps_arena_committed, mps_arena_create_k, mps_arena_destroy,
           mps_arena_reserved, mps_arena_t};
 
-#[derive(Clone)]
-pub struct Arena {
-    ptr: Arc<RawArena>,
+pub trait Arena {
+    fn as_raw(&self) -> mps_arena_t;
+
+    fn commited(&self) -> usize {
+        unsafe { mps_arena_committed(self.as_raw()) }
+    }
+
+    fn reserved(&self) -> usize {
+        unsafe { mps_arena_reserved(self.as_raw()) }
+    }
 }
 
-impl Arena {
-    pub unsafe fn from_raw(arena: mps_arena_t) -> Self {
-        Arena {
-            ptr: Arc::new(RawArena { arena }),
+#[derive(Clone)]
+pub struct ArenaRef {
+    arena: Arc<Arena>,
+}
+
+impl ArenaRef {
+    fn new<A: Arena + 'static>(arena: A) -> Self {
+        ArenaRef {
+            arena: Arc::new(arena),
         }
     }
+}
 
-    pub unsafe fn as_raw_ptr(&self) -> mps_arena_t {
-        self.ptr.arena
-    }
-
-    pub fn commited(&self) -> usize {
-        unsafe { mps_arena_committed(self.ptr.arena) }
-    }
-
-    pub fn reserved(&self) -> usize {
-        unsafe { mps_arena_reserved(self.ptr.arena) }
+impl Arena for ArenaRef {
+    fn as_raw(&self) -> mps_arena_t {
+        self.arena.as_raw()
     }
 }
 
-#[derive(Clone)]
 pub struct VmArena {
-    arena: Arena,
+    inner: ArenaRef,
 }
 
 impl VmArena {
@@ -41,27 +46,39 @@ impl VmArena {
              MPS_KEY_ARENA_SIZE: capacity,
         };
 
-        unsafe {
+        let arena = unsafe {
             let mut arena: mps_arena_t = ptr::null_mut();
             let res = mps_arena_create_k(&mut arena, mps_arena_class_vm(), args);
 
-            Error::result(res).map(|_| {
-                VmArena {
-                    arena: Arena::from_raw(arena),
-                }
-            })
-        }
+            Error::result(res).map(|_| RawArena { arena })
+        }?;
+
+        Ok(VmArena {
+            inner: ArenaRef::new(arena),
+        })
     }
 }
 
-impl AsRef<Arena> for VmArena {
-    fn as_ref(&self) -> &Arena {
-        &self.arena
+impl Arena for VmArena {
+    fn as_raw(&self) -> mps_arena_t {
+        self.inner.as_raw()
+    }
+}
+
+impl Into<ArenaRef> for VmArena {
+    fn into(self) -> ArenaRef {
+        self.inner
     }
 }
 
 struct RawArena {
     arena: mps_arena_t,
+}
+
+impl Arena for RawArena {
+    fn as_raw(&self) -> mps_arena_t {
+        self.arena
+    }
 }
 
 impl Drop for RawArena {
