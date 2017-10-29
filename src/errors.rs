@@ -1,3 +1,5 @@
+//! Error handling types
+
 use std::error::Error as StdError;
 use std::fmt;
 use std::result;
@@ -6,8 +8,13 @@ use ffi::{mps_res_t, MPS_RES_COMMIT_LIMIT, MPS_RES_IO, MPS_RES_LIMIT, MPS_RES_ME
           MPS_RES_PARAM, MPS_RES_RESOURCE, MPS_RES_UNIMPL};
 use self::Error::*;
 
+/// The Rust equivalent of `mps_res_t`
 pub type Result<T> = result::Result<T, Error>;
 
+/// Errors returned by the Memory Pool System.
+///
+/// Please refer to the [error handling](https://www.ravenbrook.com/project/mps/master/manual/html/topic/error.html)
+/// chapter in the Memory Pool System reference for more details.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     CommitLimit,
@@ -21,6 +28,8 @@ pub enum Error {
 }
 
 impl Error {
+    /// Constructs a `Result` instance from a raw `mps_res_t` value.
+    /// Occurences of `MPS_RES_OK` are converted to `Ok(())`.
     pub fn result(res: mps_res_t) -> Result<()> {
         match res as u32 {
             MPS_RES_OK => Ok(()),

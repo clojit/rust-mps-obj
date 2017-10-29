@@ -1,3 +1,5 @@
+//! Custom object format for vector of words.
+
 use std::os::raw;
 use std::ptr;
 
@@ -7,17 +9,33 @@ use arena::{Arena, ArenaRef};
 
 use ffi::*;
 
-/// Vector of words
+/// A custom object format for dynamically sized object areas.
+///
+/// An area is a vector of words, all of which could be references. The size of
+/// the area can be different for every object, but it has to be specified
+/// when an object is allocated and cannot be chanced afterwards.
+/// This object format supports tagged references, which have to be described
+/// statically using the `ReferenceTag` trait.
 pub struct AreaFormat {
     fmt: FormatRef,
 }
 
+/// Describes the format of a tagged reference.
+///
+/// This is used to find and fix references during scanning. Refer to
+/// Memory Pool System reference about
+/// [area scanners](http://www.ravenbrook.com/project/mps/master/manual/html/topic/scanning.html#area-scanners)
+/// for more details.
 pub trait ReferenceTag {
+    /// Mask to extract the tag bits from a tagged reference
     const MASK: u64;
+    /// A value is only considered a reference if the tag matches this pattern.
     const PATTERN: u64;
 }
 
 impl AreaFormat {
+    /// Creates a new object format which will be scanned using the built-in
+    /// `mps_scan_area_tagged` area scanner.
     pub fn tagged<R: ReferenceTag, A: Into<ArenaRef>>(arena: A) -> Result<Self> {
         let arena = arena.into();
         let args = mps_args! {

@@ -1,3 +1,5 @@
+//! Memory pool implementation and interfaces
+
 use errors::{Error, Result};
 use ffi::{mps_pool_destroy, mps_pool_free_size, mps_pool_t, mps_pool_total_size};
 

@@ -1,15 +1,21 @@
+//! Object formats
+
 use std::sync::Arc;
 
 use ffi::{mps_fmt_destroy, mps_fmt_t};
 use arena::{Arena, ArenaRef};
 
-pub use self::area::*;
-mod area;
+pub mod area;
 
+/// Generic MPS object format interface.
 pub trait Format {
     fn as_raw(&self) -> mps_fmt_t;
 }
 
+/// Clone-able handle to a type-erased object format.
+///
+/// By holding on to this handle, the object format and arena it belongs to
+/// will be kept alive.
 #[derive(Clone)]
 pub struct FormatRef {
     arena: ArenaRef,
@@ -24,6 +30,7 @@ impl FormatRef {
         }
     }
 
+    /// Access the arena this format belongs to
     pub fn arena(&self) -> &Arena {
         &self.arena
     }
@@ -35,6 +42,7 @@ impl Format for FormatRef {
     }
 }
 
+/// RAII-handle for a raw object format pointer.
 struct RawFormat {
     fmt: mps_fmt_t,
 }
