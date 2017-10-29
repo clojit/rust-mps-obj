@@ -6,3 +6,4 @@ pub mod pool;
 pub mod errors;
 pub mod fmt;
 pub mod thread;
+pub mod root;
