@@ -1,12 +1,13 @@
-rust-mps-obj
+RustPools
 ============
 
-An attempt to create a bindings for dynamic objects which are managed by
-the Memory Pool System.
+Opinionated Rust Wrapper for the Memory Pool System [1].
+
+Currently only supported format:
 
               0   1   2       4            8
               +---+---+-------+-------------+ <- 0
-              |mps|   |cljtype|size         |
+              |mps|   |  class|size         |
               +-----------------------------+
               | tagged reference            |
               +-----------------------------+
@@ -16,5 +17,7 @@ the Memory Pool System.
               +-----------------------------+
               | tagged reference            |
               +-----------------------------+ <- size
+
+[1] http://www.ravenbrook.com/project/mps/
 
 Licensed under the Sleepycat License: http://opensource.org/licenses/sleepycat
