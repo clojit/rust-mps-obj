@@ -73,21 +73,3 @@ impl Drop for RawArena {
         unsafe { mps_arena_destroy(self.arena) }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const ARENA_TEST_SIZE: usize = 2 << 32;
-
-    #[test]
-    fn arena_create_and_drop() {
-        let _ = VmArena::with_capacity(ARENA_TEST_SIZE).unwrap();
-    }
-
-    #[test]
-    fn arena_commited() {
-        let arena = VmArena::with_capacity(ARENA_TEST_SIZE).unwrap();
-        assert!(arena.reserved() > arena.commited());
-    }
-}
