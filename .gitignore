@@ -2,3 +2,56 @@ target
 Cargo.lock
 *~
 *.bk
+h2*
+*.sw*
+*~
+TAGS
+
+*.jar
+*.zip
+*.tar.gz
+build.info
+
+# Ignores for EA
+*.log
+
+# Ignores for git
+*.orig
+*.patch
+
+# Ignores for eclipse
+.project
+.settings
+.classpath
+.factorypath
+.apt_generated
+
+# Ignores for IntelliJ
+*.iml
+.iml/
+.idea/
+
+# Ignores for Eclipse
+.settings/
+
+# Ignores for OS X
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Ignores for Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+logs
+tmp
+pom.properties
+.gradle
+*.ipr
+*.iws
+/.ideaDataSources/
+replacement.properties.*.user
+project.clj
+.gradletasknamecache
+mqjms.log.*
