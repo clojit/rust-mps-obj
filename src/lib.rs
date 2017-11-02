@@ -7,3 +7,4 @@ pub mod errors;
 pub mod fmt;
 pub mod thread;
 pub mod root;
+pub mod handle;
