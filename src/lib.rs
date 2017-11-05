@@ -1,5 +1,5 @@
 #[macro_use]
-mod ffi;
+pub mod ffi;
 
 pub mod arena;
 pub mod pool;
