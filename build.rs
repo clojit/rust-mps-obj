@@ -65,11 +65,18 @@ fn main() {
         .compile("libmps.a");
 
     let mps_h = "mps-kit/code/mps.h";
-    let mps_arg_macro = generate_mps_args(mps_h).expect("failed to generate args macro");
+    let mps_arg_macro = generate_mps_args(mps_h).expect("failed to generate args macro for mps.h");
+
+    //let mpscmfs_h = "mps-kit/code/mpscmfs.h";
+    //let mpscmfs_arg_macro = generate_mps_args(mpscmfs_h).expect("failed to generate args macro for mpscmfs.h");
+
+    //mps_arg_macro.push_str(&mpscmfs_arg_macro);
+
 
     let bindings = bindgen::Builder::default()
         .header("mps-kit/code/mps.h")
         .header("mps-kit/code/mpsavm.h")
+        .header("mps-kit/code/mpscmfs.h")
         .raw_line(mps_arg_macro)
         .clang_arg("-Imps-kit/code")
         .generate()

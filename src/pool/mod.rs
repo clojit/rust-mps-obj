@@ -33,7 +33,6 @@ pub struct PoolRef {
     pool: Arc<Pool>,
 }
 
-
 impl PoolRef {
     fn new<P: Pool + 'static>(arena: ArenaRef, pool: P) -> Self {
         PoolRef {
@@ -47,6 +46,7 @@ impl PoolRef {
         &self.arena
     }
 }
+
 
 pub struct Chunk {
     pool: mps_pool_t,
@@ -124,6 +124,13 @@ impl DerefMut for Chunk {
 pub struct RawPool {
     pool: mps_pool_t,
 }
+
+impl Pool for RawPool {
+    fn as_raw(&self) -> mps_pool_t {
+        self.pool
+    }
+}
+
 
 impl Drop for RawPool {
     fn drop(&mut self) {

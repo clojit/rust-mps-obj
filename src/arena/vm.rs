@@ -11,7 +11,7 @@ use arena::{Arena, ArenaRef, RawArena};
 /// See [the reference](https://www.ravenbrook.com/project/mps/master/manual/html/topic/arena.html#virtual-memory-arenas)
 /// for details.
 pub struct VmArena {
-    inner: ArenaRef,
+    pub inner: ArenaRef,
 }
 
 impl VmArena {
