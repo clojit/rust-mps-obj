@@ -27,52 +27,52 @@ impl fmt::Debug for RootListItem {
 
 #[derive(Debug)]
 pub struct FreeRootItemList {
-    openSlot: u64,
+    open_slot: u64,
     freelist: Vec<RootListItem>
 }
 
 impl RootList<mps_addr_t> for FreeRootItemList {
     fn alloc_handle(&mut self, item: mps_addr_t) -> Handle {
 
-        if self.openSlot == self.freelist.len() as u64 {
+        if self.open_slot == self.freelist.len() as u64 {
             panic!("No more Slots in RootList");
         }
 
-        let next = unsafe { self.freelist[self.openSlot as usize].next };
+        let next = unsafe { self.freelist[self.open_slot as usize].next };
 
-        self.freelist[self.openSlot as usize].content =  item;
+        self.freelist[self.open_slot as usize].content =  item;
 
         let h = Handle {
-            index: self.openSlot
+            index: self.open_slot
         };
 
-        self.openSlot = next;
+        self.open_slot = next;
 
         return h;
     }
 
     fn free_handle(&mut self, handle: Handle) {
-        self.freelist[handle.index as usize].next = self.openSlot;
-        self.openSlot = handle.index;
+        self.freelist[handle.index as usize].next = self.open_slot;
+        self.open_slot = handle.index;
     }
 }
 
 #[derive(Debug)]
 pub enum FreeItem<T> {
-    next(u64),
-    content(T)
+    Next(u64),
+    Content(T)
 }
 
 impl<T> fmt::Display for FreeItem<T> where T : fmt::Display {
     fn fmt(&self, h: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            FreeItem::next(x) => write!(h, "FreeItem({})",x ),
-            FreeItem::content(ref y) => write!(h, "FreeItem({})", y)
+            FreeItem::Next(x) => write!(h, "FreeItem({})", x ),
+            FreeItem::Content(ref y) => write!(h, "FreeItem({})", y)
         }
     }
 }
 
-pub fn buildHandleTable() -> FreeRootItemList {
+pub fn build_handle_table() -> FreeRootItemList {
     let mut freelist = Vec::new();
 
     for x in 1..HANDLE_TABLE_SIZE {
@@ -80,7 +80,7 @@ pub fn buildHandleTable() -> FreeRootItemList {
     }
 
     FreeRootItemList {
-        openSlot: 0,
+        open_slot: 0,
         freelist
     }
 }
@@ -90,23 +90,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checkSlotAlloc() {
-        let mut f : FreeRootItemList = buildHandleTable();
+    fn check_slot_alloc() {
+        let mut f : FreeRootItemList = build_handle_table();
         let t  = f.alloc_handle(10000 as mps_addr_t);
         assert_eq!( unsafe { f.freelist[t.index as usize].content as u64 } , 10000);
     }
 
     #[test]
-    fn handleAllocAndDrop() {
-        let mut f : FreeRootItemList = buildHandleTable();
-        let open = f.openSlot;
-        let t  = f.alloc_handle(10000 as mps_addr_t);
-        assert_eq!(f.openSlot, open);
+    fn handle_alloc_and_drop() {
+        let mut f : FreeRootItemList = build_handle_table();
+        let open = f.open_slot;
+        let _t  = f.alloc_handle(10000 as mps_addr_t);
+        assert_eq!(f.open_slot, open);
     }
 
     #[test]
-    fn handleAlloc() {
-        let mut f : FreeRootItemList = buildHandleTable();
+    fn handle_alloc() {
+        let mut f : FreeRootItemList = build_handle_table();
         let t = f.alloc_handle(10000 as mps_addr_t);
         assert_eq!(t.index, 1);
     }

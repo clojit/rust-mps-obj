@@ -1,4 +1,3 @@
-//! Memory pool implementation and interfaces
 
 pub mod mfs;
 
@@ -7,35 +6,15 @@ use std::ptr;
 use std::slice;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::marker::PhantomData;
 
 use arena::{Arena, ArenaRef};
 use errors::{Error, Result};
+
 use ffi::{mps_addr_t, mps_alloc, mps_free, mps_pool_destroy, mps_pool_free_size, mps_pool_t, mps_pool_total_size};
 
-/// Clone-able handle to a type-erased object pool.
-#[derive(Clone)]
-pub struct PoolRef {
-    arena: ArenaRef,
-    pool: Arc<Pool>,
-}
 
-impl PoolRef {
-    fn new<P: Pool + 'static>(arena: ArenaRef, pool: P) -> Self {
-        PoolRef {
-            arena: arena,
-            pool: Arc::new(pool),
-        }
-    }
-
-    /// Access the arena this format belongs to
-    pub fn arena(&self) -> &Arena {
-        &self.arena
-    }
-}
-
-/// Generic pool interface
 pub trait Pool {
+
     fn as_raw(&self) -> mps_pool_t;
 
     /// Returns the total size the pool occupies in its arena
@@ -49,24 +28,44 @@ pub trait Pool {
     }
 }
 
-/// A manually allocated chunk of fixed-size, homogenous memory
-///
-/// Will be freed on drop
-pub struct Chunk<'pool, T: 'pool> {
-    pool: mps_pool_t,
-    addr: mps_addr_t,
-    len: usize,
-    _marker: PhantomData<&'pool mut T>,
+pub struct PoolRef {
+    arena: ArenaRef,
+    pool: Arc<Pool>,
 }
 
+
+impl PoolRef {
+    fn new<P: Pool + 'static>(arena: ArenaRef, pool: P) -> Self {
+        PoolRef {
+            arena,
+            pool: Arc::new(pool),
+        }
+    }
+
+    /// Access the arena this format belongs to
+    pub fn arena(&self) -> &Arena {
+        &self.arena
+    }
+}
+
+pub struct Chunk {
+    pool: mps_pool_t,
+    addr: mps_addr_t,
+    len: usize
+}
+
+
 pub trait ManualAllocPool: Pool {
-    fn alloc<'pool, T: Default>(&'pool self, len: usize) -> Result<Chunk<'pool, T>> {
+    fn alloc<T: Default>(&self, len: usize) -> Result<Chunk> {
+
         // TODO(gandro): check len fits in isize and is nonzero
         let pool = self.as_raw();
         let addr = unsafe {
             // allocate
             let mut addr: mps_addr_t = ptr::null_mut();
-            let size = len * mem::size_of::<T>();
+
+            let size = len * mem::size_of::<mps_addr_t>();
+
             Error::result(mps_alloc(&mut addr, pool, size))?;
 
             // initialize with default value
@@ -81,50 +80,48 @@ pub trait ManualAllocPool: Pool {
         Ok(Chunk {
             pool: pool,
             addr: addr,
-            len: len,
-            _marker: PhantomData,
+            len: len
         })
     }
 }
 
-impl<'pool, T> Drop for Chunk<'pool, T> {
+
+impl Drop for Chunk {
     fn drop(&mut self) {
         unsafe {
-            let base: *mut T = self.addr as *mut _;
+            let base: *mut mps_addr_t = self.addr as *mut _;
             for i in 0..self.len as isize {
                 ptr::drop_in_place(base.offset(i));
             }
 
-            let size = self.len * mem::size_of::<T>();
+            let size = self.len * mem::size_of::<mps_addr_t>();
             mps_free(self.pool, self.addr, size)
         }
     }
 }
 
-impl<'pool, T> Deref for Chunk<'pool, T> {
-    type Target = [T];
+impl Deref for Chunk {
+    type Target = [mps_addr_t];
 
-    fn deref(&self) -> &[T] {
+    fn deref(&self) -> &[mps_addr_t] {
         unsafe {
-            let addr: *const T = self.addr as *const _;
+            let addr: *const mps_addr_t = self.addr as *const _;
             slice::from_raw_parts(addr, self.len)
         }
     }
 }
 
-impl<'pool, T> DerefMut for Chunk<'pool, T> {
-    fn deref_mut(&mut self) -> &mut [T] {
+impl DerefMut for Chunk {
+    fn deref_mut(&mut self) -> &mut [mps_addr_t] {
         unsafe {
-            let addr: *mut T = self.addr as *mut _;
+            let addr: *mut mps_addr_t = self.addr as *mut _;
             slice::from_raw_parts_mut(addr, self.len)
         }
     }
 }
 
 
-
-/// RAII-style handle
-struct RawPool {
+pub struct RawPool {
     pool: mps_pool_t,
 }
 
@@ -133,3 +130,8 @@ impl Drop for RawPool {
         unsafe { mps_pool_destroy(self.pool) }
     }
 }
+
+
+
+
+

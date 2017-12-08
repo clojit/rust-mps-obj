@@ -1,12 +1,12 @@
 extern crate memory_pool_system;
 
-use memory_pool_system::handle::{FreeRootItemList, buildHandleTable, RootList};
+use memory_pool_system::handle::{FreeRootItemList, build_handle_table, RootList};
 use memory_pool_system::ffi::mps_addr_t;
 
 
 fn main() {
 
-    let mut f : FreeRootItemList = buildHandleTable();
+    let mut f : FreeRootItemList = build_handle_table();
 
     println!("Old: {:?}", f);
     let t = f.alloc_handle(  10000 as mps_addr_t);

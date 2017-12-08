@@ -74,7 +74,7 @@ impl Into<FormatRef> for AreaFormat {
 enum Content {
     Padding = 0,
     Forward = 1,
-    Object = 2,
+    Object = 2
 }
 
 #[repr(C, packed)]
