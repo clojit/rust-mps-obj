@@ -1,5 +1,5 @@
 #[macro_use]
-pub mod ffi;
+pub extern crate mps_sys as ffi;
 
 pub mod arena;
 pub mod pool;

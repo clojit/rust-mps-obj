@@ -16,15 +16,15 @@ fn generate_mps_args<P: AsRef<Path>>(header: P) -> Result<String, Box<Error>> {
     let re = Regex::new(r"^#define[\t ]+MPS_KEY_(?P<name>[A-Z_]+)_FIELD[\t ]+(?P<field>[a-z_]+)")?;
     let source_code = BufReader::new(File::open(header)?);
 
-    writeln!(&mut out, "macro_rules! mps_arg_s {{")?;
+    writeln!(&mut out, "#[macro_export] macro_rules! mps_arg_s {{")?;
     for line in source_code.lines() {
         let l = line?;
         if let Some(c) = re.captures(&l) {
             writeln!(
                 &mut out,
                 r"(MPS_KEY_{0}, $value:expr) => {{ unsafe {{
-                let mut _arg: $crate::ffi::mps_arg_s = ::std::mem::zeroed();
-                _arg.key = &$crate::ffi::_mps_key_{0};
+                let mut _arg: $crate::mps_arg_s = ::std::mem::zeroed();
+                _arg.key = &$crate::_mps_key_{0};
                 _arg.val.{1} = $value;
                 _arg
             }} }};",
@@ -37,8 +37,8 @@ fn generate_mps_args<P: AsRef<Path>>(header: P) -> Result<String, Box<Error>> {
     writeln!(
         &mut out,
         r"(MPS_KEY_ARGS_END) => {{ unsafe {{
-        let mut _arg: $crate::ffi::mps_arg_s = ::std::mem::zeroed();
-        _arg.key = &$crate::ffi::_mps_key_ARGS_END;
+        let mut _arg: $crate::mps_arg_s = ::std::mem::zeroed();
+        _arg.key = &$crate::_mps_key_ARGS_END;
         _arg
     }} }};"
     )?;
