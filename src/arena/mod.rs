@@ -1,7 +1,5 @@
 //! Arena implementations
 
-use std::sync::Arc;
-
 use ffi::{mps_arena_committed, mps_arena_destroy, mps_arena_reserved, mps_arena_t};
 
 pub mod vm;

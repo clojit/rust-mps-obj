@@ -2,7 +2,6 @@
 
 pub mod mfs;
 
-use std::sync::Arc;
 use std::ptr;
 use std::slice;
 use std::mem;

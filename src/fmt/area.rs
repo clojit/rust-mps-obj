@@ -74,11 +74,13 @@ impl<A: Arena> Format for AreaFormat<A> {
     }
 }
 
+
 #[repr(u8)]
+#[allow(dead_code)]
 enum Content {
     Padding = 0,
     Forward = 1,
-    Object = 2,
+    Object = 2
 }
 
 #[repr(C, packed)]

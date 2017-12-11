@@ -1,6 +1,5 @@
 //! Thread registration
 
-use std::sync::Arc;
 use std::ptr;
 
 use ffi::{mps_thr_t, mps_thread_reg, mps_thread_dereg};

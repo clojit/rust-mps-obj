@@ -1,7 +1,5 @@
 //! Object formats
 
-use std::sync::Arc;
-
 use ffi::{mps_fmt_destroy, mps_fmt_t};
 use arena::{Arena};
 

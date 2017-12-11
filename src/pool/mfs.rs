@@ -9,7 +9,7 @@ use pool::{Pool, RawPool, ManualAllocPool, Chunk};
 use arena::{Arena};
 use arena::vm::{VmArena};
 
-use ffi::{mps_pool_t, mps_pool_create_k, mps_class_mfs, mps_addr_t};
+use ffi::{mps_pool_t, mps_pool_create_k, mps_class_mfs};
 
 #[derive(Clone)]
 pub struct MfsPool<A> {
