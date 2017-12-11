@@ -11,27 +11,35 @@ use std::error::Error;
 
 use regex::Regex;
 
-fn generate_mps_args<P: AsRef<Path>>(header: P) -> Result<String, Box<Error>> {
-    let mut out = String::new();
+fn collect_mps_args<P: AsRef<Path>>(header: P, out: &mut Vec<(String, String)>) -> Result<(), Box<Error>> {
     let re = Regex::new(r"^#define[\t ]+MPS_KEY_(?P<name>[A-Z_]+)_FIELD[\t ]+(?P<field>[a-z_]+)")?;
     let source_code = BufReader::new(File::open(header)?);
 
-    writeln!(&mut out, "#[macro_export] macro_rules! mps_arg_s {{")?;
     for line in source_code.lines() {
         let l = line?;
         if let Some(c) = re.captures(&l) {
-            writeln!(
-                &mut out,
-                r"(MPS_KEY_{0}, $value:expr) => {{ unsafe {{
-                let mut _arg: $crate::mps_arg_s = ::std::mem::zeroed();
-                _arg.key = &$crate::_mps_key_{0};
-                _arg.val.{1} = $value;
-                _arg
-            }} }};",
-                &c["name"],
-                &c["field"]
-            )?;
+            out.push((c["name"].to_string(), c["field"].to_string()));
         }
+    }
+
+    Ok(())
+}
+
+fn generate_mps_args(defines: Vec<(String, String)>) -> Result<String, Box<Error>> {
+    let mut out = String::new();
+
+    writeln!(&mut out, "#[macro_export] macro_rules! mps_arg_s {{")?;
+    for (name, field) in defines {
+        writeln!(
+            &mut out,
+            r"(MPS_KEY_{0}, $value:expr) => {{ unsafe {{
+            let mut _arg: $crate::mps_arg_s = ::std::mem::zeroed();
+            _arg.key = &$crate::_mps_key_{0};
+            _arg.val.{1} = $value;
+            _arg
+        }} }};",
+            name, field
+        )?;
     }
 
     writeln!(
@@ -64,14 +72,20 @@ fn main() {
         .include("mps-kit/code")
         .compile("libmps.a");
 
+    let mut defines = Vec::new();
     let mps_h = "mps-kit/code/mps.h";
-    let mps_arg_macro = generate_mps_args(mps_h).expect("failed to generate args macro");
+    collect_mps_args(mps_h, &mut defines).expect("failed to collect args macro");
+
+    let mpscmfs_h = "mps-kit/code/mpscmfs.h";
+    collect_mps_args(mpscmfs_h, &mut defines).expect("failed to collect args macro");
+
+    let macro_code = generate_mps_args(defines).expect("failed to write macro args");
 
     let bindings = bindgen::Builder::default()
         .header("mps-kit/code/mps.h")
         .header("mps-kit/code/mpsavm.h")
         .header("mps-kit/code/mpscmfs.h")
-        .raw_line(mps_arg_macro)
+        .raw_line(macro_code)
         .clang_arg("-Imps-kit/code")
         .generate()
         .expect("Unable to generate bindings");
