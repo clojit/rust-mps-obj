@@ -5,12 +5,11 @@ use std::ptr;
 
 use errors::{Result, Error};
 
-use pool::{Pool, RawPool, ManualAllocPool};
+use pool::{Pool, RawPool, ManualAllocPool, Chunk};
 use arena::{Arena};
 use arena::vm::{VmArena};
 
-
-use ffi::{mps_pool_t, mps_pool_create_k, mps_class_mfs};
+use ffi::{mps_pool_t, mps_pool_create_k, mps_class_mfs, mps_addr_t};
 
 #[derive(Clone)]
 pub struct MfsPool<A> {
@@ -60,23 +59,22 @@ mod tests {
     use super::*;
 
     const ARENA_TEST_SIZE: usize = 2 << 32;
+    const HANDLE_TABLE: usize = (8 * 64);
 
     #[test]
     fn arena_create_and_drop() {
         let a = VmArena::with_capacity(ARENA_TEST_SIZE).unwrap();
 
-        let pool = MfsPool::with_arena(&a, 4);
+        let pool = MfsPool::with_arena(&a, HANDLE_TABLE*8).unwrap();
 
-        match pool {
-            Ok(p) => {
-                println!("Total Size: {:?}", p.total_size());
-                println!("Free Size: {:?}", p.free_size());
-            },
-            Err(err) => println!("Error: {:?}", err),
-        }
+        let c1 : Chunk<u64, _> = pool.alloc(HANDLE_TABLE).unwrap();
 
+        assert_eq!(c1.len(), HANDLE_TABLE);
 
+        assert!(pool.total_size() > 0 );
+
+        println!("{}" , (pool.total_size() / 8) );
+        println!("{}" ,  (pool.free_size()/8));
+        //assert_eq!(pool, c1.pool);
     }
-
-
 }
