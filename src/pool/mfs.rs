@@ -151,4 +151,17 @@ mod tests {
         println!("{}" , (pool.total_size() / 8) );
         println!("{}" ,  (pool.free_size()/8));
     }
+
+    #[test]
+    fn simple_alloc() {
+        let a = VmArena::with_capacity(ARENA_TEST_SIZE).unwrap();
+
+        let pool = MfsPool::<i32, _>::with_arena(&a).unwrap();
+
+        let five = pool.alloc(|| 5).unwrap();
+        assert_eq!(*five, 5);
+
+        let six = pool.alloc(|| 6).unwrap();
+        assert_eq!(*six, 6);
+    }
 }
