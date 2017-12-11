@@ -1,0 +1,10 @@
+[package]
+name = "mps-sys"
+version = "0.1.0"
+build = "build.rs"
+authors = ["Sebastian Wicki <gandro@gmx.net>"]
+
+[build-dependencies]
+bindgen = "0.31.0"
+cc = "1.0"
+regex = "0.2.2"

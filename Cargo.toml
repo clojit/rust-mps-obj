@@ -1,10 +1,9 @@
 [package]
 name = "memory_pool_system"
-build = "build.rs"
 version = "0.0.2"
 authors = ["Sebastian Wicki <gandro@gmx.net>", "Nick Zbinden <niklaus.zbinden@gmail>"]
 
-[build-dependencies]
-bindgen = "0.31.0"
-cc = "1.0"
-regex = "0.2.2"
+[workspace]
+
+[dependencies]
+mps-sys = { path = "./mps-sys" }
