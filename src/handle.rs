@@ -101,6 +101,7 @@ mod tests {
         let mut f : FreeRootItemList = buildHandleTable();
         let open = f.openSlot;
         let t  = f.alloc_handle(10000 as mps_addr_t);
+        f.free_handle(t);
         assert_eq!(f.openSlot, open);
     }
 
@@ -108,6 +109,8 @@ mod tests {
     fn handleAlloc() {
         let mut f : FreeRootItemList = buildHandleTable();
         let t = f.alloc_handle(10000 as mps_addr_t);
-        assert_eq!(t.index, 1);
+        assert_eq!(t.index, 0);
+        let t2 = f.alloc_handle(10001 as mps_addr_t);
+        assert_eq!(t2.index, 1);
     }
 }
