@@ -5,7 +5,7 @@ use std::ptr;
 
 use errors::{Result, Error};
 use ffi::{mps_arena_class_vm, mps_arena_create_k, mps_arena_t};
-use arena::{Arena, RawArena};
+use arena::{Arena, ArenaRef, RawArena};
 
 /// An MPS arena backed by virtual memory.
 ///
@@ -39,6 +39,12 @@ impl VmArena {
 impl Arena for VmArena {
     fn as_raw(&self) -> mps_arena_t {
         self.raw.arena
+    }
+}
+
+impl ArenaRef for VmArena {
+    fn acquire(&self) -> Self {
+        self.clone()
     }
 }
 

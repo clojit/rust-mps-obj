@@ -5,7 +5,7 @@ use ffi::{mps_arena_committed, mps_arena_destroy, mps_arena_reserved, mps_arena_
 pub mod vm;
 
 /// Generic MPS arena interface
-pub trait Arena: Clone {
+pub trait Arena {
     /// Returns a raw pointer to the underlying MPS arena.
     ///
     /// Note that this pointer must never outlive self.
@@ -26,8 +26,12 @@ pub trait Arena: Clone {
     }
 }
 
+pub trait ArenaRef: Arena {
+    fn acquire(&self) -> Self;
+}
 
 /// RAII-handle for a raw arena pointer. Destroys the underlying arena on drop.
+#[derive(Debug)]
 struct RawArena {
     arena: mps_arena_t,
 }

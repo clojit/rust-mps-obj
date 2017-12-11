@@ -5,8 +5,8 @@ use std::os::raw;
 use std::ptr;
 
 use errors::{Error, Result};
-use fmt::{Format, RawFormat};
-use arena::{Arena};
+use fmt::{Format, FormatRef, RawFormat};
+use arena::{ArenaRef};
 
 use ffi::*;
 
@@ -17,9 +17,9 @@ use ffi::*;
 /// when an object is allocated and cannot be chanced afterwards.
 /// This object format supports tagged references, which have to be described
 /// statically using the `ReferenceTag` trait.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AreaFormat<A> {
-    raw: Arc<RawFormat>,
+    fmt: Arc<RawFormat>,
     arena: A,
 }
 
@@ -36,11 +36,11 @@ pub trait ReferenceTag {
     const PATTERN: u64;
 }
 
-impl<A: Arena> AreaFormat<A> {
+impl<A: ArenaRef> AreaFormat<A> {
     /// Creates a new object format which will be scanned using the built-in
     /// `mps_scan_area_tagged` area scanner.
     pub fn tagged<R: ReferenceTag>(arena: &A) -> Result<Self> {
-        let arena = arena.clone();
+        let arena = arena.acquire();
         let args = mps_args! {
             MPS_KEY_FMT_SCAN: Some(obj_scan_tagged::<R>),
             MPS_KEY_FMT_SKIP: Some(obj_skip),
@@ -56,24 +56,32 @@ impl<A: Arena> AreaFormat<A> {
         }?;
 
         Ok(AreaFormat {
-            raw: Arc::new(format),
-            arena: arena.clone(),
+            fmt: Arc::new(format),
+            arena: arena,
         })
     }
 }
 
-impl<A: Arena> Format for AreaFormat<A> {
-    type Arena = A;
-
+impl<A> Format for AreaFormat<A> {
     fn as_raw(&self) -> mps_fmt_t {
-        self.raw.fmt
+        self.fmt.as_raw()
     }
+}
+
+impl<A: ArenaRef> FormatRef for AreaFormat<A> {
+    type Arena = A;
     
+    fn acquire(&self) -> Self {
+        AreaFormat {
+            fmt: self.fmt.clone(),
+            arena: self.arena.acquire(),
+        }
+    }
+
     fn arena(&self) -> &Self::Arena {
         &self.arena
     }
 }
-
 
 #[repr(u8)]
 #[allow(dead_code)]
