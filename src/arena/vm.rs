@@ -1,17 +1,19 @@
 //! Virtual memory arena
 
+use std::sync::Arc;
 use std::ptr;
 
 use errors::{Result, Error};
 use ffi::{mps_arena_class_vm, mps_arena_create_k, mps_arena_t};
-use arena::{Arena, ArenaRef, RawArena};
+use arena::{Arena, RawArena};
 
 /// An MPS arena backed by virtual memory.
 ///
 /// See [the reference](https://www.ravenbrook.com/project/mps/master/manual/html/topic/arena.html#virtual-memory-arenas)
 /// for details.
+#[derive(Clone)]
 pub struct VmArena {
-    inner: ArenaRef,
+    raw: Arc<RawArena>,
 }
 
 impl VmArena {
@@ -29,20 +31,14 @@ impl VmArena {
         }?;
 
         Ok(VmArena {
-            inner: ArenaRef::new(arena),
+            raw: Arc::new(arena),
         })
     }
 }
 
 impl Arena for VmArena {
     fn as_raw(&self) -> mps_arena_t {
-        self.inner.as_raw()
-    }
-}
-
-impl Into<ArenaRef> for VmArena {
-    fn into(self) -> ArenaRef {
-        self.inner
+        self.raw.arena
     }
 }
 

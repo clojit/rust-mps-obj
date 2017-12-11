@@ -1,11 +1,12 @@
 //! Custom object format for vector of words.
 
+use std::sync::Arc;
 use std::os::raw;
 use std::ptr;
 
 use errors::{Error, Result};
-use fmt::{Format, FormatRef, RawFormat};
-use arena::{Arena, ArenaRef};
+use fmt::{Format, RawFormat};
+use arena::{Arena};
 
 use ffi::*;
 
@@ -16,8 +17,10 @@ use ffi::*;
 /// when an object is allocated and cannot be chanced afterwards.
 /// This object format supports tagged references, which have to be described
 /// statically using the `ReferenceTag` trait.
-pub struct AreaFormat {
-    fmt: FormatRef,
+#[derive(Clone)]
+pub struct AreaFormat<A> {
+    raw: Arc<RawFormat>,
+    arena: A,
 }
 
 /// Describes the format of a tagged reference.
@@ -33,11 +36,11 @@ pub trait ReferenceTag {
     const PATTERN: u64;
 }
 
-impl AreaFormat {
+impl<A: Arena> AreaFormat<A> {
     /// Creates a new object format which will be scanned using the built-in
     /// `mps_scan_area_tagged` area scanner.
-    pub fn tagged<R: ReferenceTag, A: Into<ArenaRef>>(arena: A) -> Result<Self> {
-        let arena = arena.into();
+    pub fn tagged<R: ReferenceTag>(arena: &A) -> Result<Self> {
+        let arena = arena.clone();
         let args = mps_args! {
             MPS_KEY_FMT_SCAN: Some(obj_scan_tagged::<R>),
             MPS_KEY_FMT_SKIP: Some(obj_skip),
@@ -53,20 +56,21 @@ impl AreaFormat {
         }?;
 
         Ok(AreaFormat {
-            fmt: FormatRef::new(arena, format),
+            raw: Arc::new(format),
+            arena: arena.clone(),
         })
     }
 }
 
-impl Format for AreaFormat {
-    fn as_raw(&self) -> mps_fmt_t {
-        self.fmt.as_raw()
-    }
-}
+impl<A: Arena> Format for AreaFormat<A> {
+    type Arena = A;
 
-impl Into<FormatRef> for AreaFormat {
-    fn into(self) -> FormatRef {
-        self.fmt
+    fn as_raw(&self) -> mps_fmt_t {
+        self.raw.fmt
+    }
+    
+    fn arena(&self) -> &Self::Arena {
+        &self.arena
     }
 }
 

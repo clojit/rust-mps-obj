@@ -9,34 +9,16 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::marker::PhantomData;
 
-use arena::{Arena, ArenaRef};
+use arena::{Arena};
 use errors::{Error, Result};
 use ffi::{mps_addr_t, mps_alloc, mps_free, mps_pool_destroy, mps_pool_free_size, mps_pool_t, mps_pool_total_size};
 
-/// Clone-able handle to a type-erased object pool.
-#[derive(Clone)]
-pub struct PoolRef {
-    arena: ArenaRef,
-    pool: Arc<Pool>,
-}
-
-impl PoolRef {
-    fn new<P: Pool + 'static>(arena: ArenaRef, pool: P) -> Self {
-        PoolRef {
-            arena: arena,
-            pool: Arc::new(pool),
-        }
-    }
-
-    /// Access the arena this format belongs to
-    pub fn arena(&self) -> &Arena {
-        &self.arena
-    }
-}
-
 /// Generic pool interface
-pub trait Pool {
+pub trait Pool: Clone {
+    type Arena: Arena;
+
     fn as_raw(&self) -> mps_pool_t;
+    fn arena(&self) -> &Self::Arena;
 
     /// Returns the total size the pool occupies in its arena
     fn total_size(&self) -> usize {
@@ -49,19 +31,22 @@ pub trait Pool {
     }
 }
 
+/*
+
 /// A manually allocated chunk of fixed-size, homogenous memory
 ///
 /// Will be freed on drop
-pub struct Chunk<'pool, T: 'pool> {
-    pool: mps_pool_t,
+pub struct Chunk<T> {
+    pool: PoolRef,
     addr: mps_addr_t,
     len: usize,
-    _marker: PhantomData<&'pool mut T>,
+    _marker: PhantomData<Vec<T>>,
 }
 
 pub trait ManualAllocPool: Pool {
-    fn alloc<'pool, T: Default>(&'pool self, len: usize) -> Result<Chunk<'pool, T>> {
+    fn alloc<T: Default>(&self, len: usize) -> Result<Chunk<T>> {
         // TODO(gandro): check len fits in isize and is nonzero
+        let pool_ref = self.clone()
         let pool = self.as_raw();
         let addr = unsafe {
             // allocate
@@ -79,7 +64,7 @@ pub trait ManualAllocPool: Pool {
         };
 
         Ok(Chunk {
-            pool: pool,
+            pool: self.clone().into(),
             addr: addr,
             len: len,
             _marker: PhantomData,
@@ -87,7 +72,7 @@ pub trait ManualAllocPool: Pool {
     }
 }
 
-impl<'pool, T> Drop for Chunk<'pool, T> {
+impl<T> Drop for Chunk<T> {
     fn drop(&mut self) {
         unsafe {
             let base: *mut T = self.addr as *mut _;
@@ -96,12 +81,12 @@ impl<'pool, T> Drop for Chunk<'pool, T> {
             }
 
             let size = self.len * mem::size_of::<T>();
-            mps_free(self.pool, self.addr, size)
+            mps_free(self.pool.as_raw(), self.addr, size)
         }
     }
 }
 
-impl<'pool, T> Deref for Chunk<'pool, T> {
+impl<T> Deref for Chunk<T> {
     type Target = [T];
 
     fn deref(&self) -> &[T] {
@@ -112,7 +97,7 @@ impl<'pool, T> Deref for Chunk<'pool, T> {
     }
 }
 
-impl<'pool, T> DerefMut for Chunk<'pool, T> {
+impl<T> DerefMut for Chunk<T> {
     fn deref_mut(&mut self) -> &mut [T] {
         unsafe {
             let addr: *mut T = self.addr as *mut _;
@@ -121,7 +106,7 @@ impl<'pool, T> DerefMut for Chunk<'pool, T> {
     }
 }
 
-
+*/
 
 /// RAII-style handle
 struct RawPool {

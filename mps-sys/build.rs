@@ -70,6 +70,7 @@ fn main() {
     let bindings = bindgen::Builder::default()
         .header("mps-kit/code/mps.h")
         .header("mps-kit/code/mpsavm.h")
+        .header("mps-kit/code/mpscmfs.h")
         .raw_line(mps_arg_macro)
         .clang_arg("-Imps-kit/code")
         .generate()
