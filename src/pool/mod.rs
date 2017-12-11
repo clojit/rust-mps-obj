@@ -31,28 +31,26 @@ pub trait Pool: Clone {
     }
 }
 
-/*
 
 /// A manually allocated chunk of fixed-size, homogenous memory
 ///
 /// Will be freed on drop
-pub struct Chunk<T> {
-    pool: PoolRef,
+pub struct Chunk<T, P: ManualAllocPool> {
+    pool: P,
     addr: mps_addr_t,
     len: usize,
     _marker: PhantomData<Vec<T>>,
 }
 
-pub trait ManualAllocPool: Pool {
-    fn alloc<T: Default>(&self, len: usize) -> Result<Chunk<T>> {
+pub trait ManualAllocPool: Pool + Sized {
+    fn alloc<T: Default>(&self, len: usize) -> Result<Chunk<T, Self>> {
         // TODO(gandro): check len fits in isize and is nonzero
-        let pool_ref = self.clone()
-        let pool = self.as_raw();
+        let pool = self.clone();
         let addr = unsafe {
             // allocate
             let mut addr: mps_addr_t = ptr::null_mut();
             let size = len * mem::size_of::<T>();
-            Error::result(mps_alloc(&mut addr, pool, size))?;
+            Error::result(mps_alloc(&mut addr, pool.as_raw(), size))?;
 
             // initialize with default value
             let base: *mut T = addr as *mut _;
@@ -72,7 +70,7 @@ pub trait ManualAllocPool: Pool {
     }
 }
 
-impl<T> Drop for Chunk<T> {
+impl<T, P: ManualAllocPool> Drop for Chunk<T, P> {
     fn drop(&mut self) {
         unsafe {
             let base: *mut T = self.addr as *mut _;
@@ -86,7 +84,7 @@ impl<T> Drop for Chunk<T> {
     }
 }
 
-impl<T> Deref for Chunk<T> {
+impl<T, P: ManualAllocPool> Deref for Chunk<T, P> {
     type Target = [T];
 
     fn deref(&self) -> &[T] {
@@ -97,7 +95,7 @@ impl<T> Deref for Chunk<T> {
     }
 }
 
-impl<T> DerefMut for Chunk<T> {
+impl<T, P: ManualAllocPool> DerefMut for Chunk<T, P> {
     fn deref_mut(&mut self) -> &mut [T] {
         unsafe {
             let addr: *mut T = self.addr as *mut _;
@@ -105,8 +103,6 @@ impl<T> DerefMut for Chunk<T> {
         }
     }
 }
-
-*/
 
 /// RAII-style handle
 struct RawPool {

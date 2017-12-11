@@ -5,7 +5,7 @@ use std::ptr;
 
 use errors::{Result, Error};
 
-use pool::{Pool, RawPool};
+use pool::{Pool, RawPool, ManualAllocPool};
 use arena::{Arena};
 use arena::vm::{VmArena};
 
@@ -49,6 +49,10 @@ impl<A: Arena> Pool for MfsPool<A> {
     fn arena(&self) -> &Self::Arena {
         &self.arena
     }
+}
+
+impl<A: Arena> ManualAllocPool for MfsPool<A> {
+
 }
 
 #[cfg(test)]
