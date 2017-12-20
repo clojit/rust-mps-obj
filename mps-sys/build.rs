@@ -85,6 +85,7 @@ fn main() {
         .header("mps-kit/code/mps.h")
         .header("mps-kit/code/mpsavm.h")
         .header("mps-kit/code/mpscmfs.h")
+        .header("mps-kit/code/mpscamc.h")
         .raw_line(macro_code)
         .clang_arg("-Imps-kit/code")
         .generate()

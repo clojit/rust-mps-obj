@@ -20,7 +20,7 @@ use ffi::*;
 #[derive(Debug, Clone)]
 pub struct AreaFormat<A> {
     fmt: Arc<RawFormat>,
-    arena: A,
+    pub arena: A,
 }
 
 /// Describes the format of a tagged reference.
@@ -36,9 +36,10 @@ pub trait ReferenceTag {
     const PATTERN: u64;
 }
 
+/// Creates a new object format which will be scanned using the built-in
+/// `mps_scan_area_tagged` area scanner.
+
 impl<A: ArenaRef> AreaFormat<A> {
-    /// Creates a new object format which will be scanned using the built-in
-    /// `mps_scan_area_tagged` area scanner.
     pub fn tagged<R: ReferenceTag>(arena: &A) -> Result<Self> {
         let arena = arena.acquire();
         let args = mps_args! {

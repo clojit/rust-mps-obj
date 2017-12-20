@@ -1,6 +1,7 @@
 //! Memory pool implementation and interfaces
 
 pub mod mfs;
+pub mod amc;
 
 use arena::{ArenaRef};
 use ffi::{mps_pool_destroy, mps_pool_free_size, mps_pool_t, mps_pool_total_size};
